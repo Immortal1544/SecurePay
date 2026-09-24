@@ -121,6 +121,22 @@ public class OrderService {
 		return toOrderResponse(order);
 	}
 
+	@Transactional(readOnly = true)
+	public List<OrderResponse> getAllOrdersForAdmin() {
+		return orderRepository.findAllByOrderByCreatedAtDesc()
+				.stream()
+				.map(this::toOrderResponse)
+				.toList();
+	}
+
+	@Transactional(readOnly = true)
+	public OrderResponse getOrderByIdForAdmin(Long orderId) {
+		Order order = orderRepository.findById(orderId)
+				.orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+
+		return toOrderResponse(order);
+	}
+
 	private User getCurrentUser() {
 		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 		if (authentication == null
