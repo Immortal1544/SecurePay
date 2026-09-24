@@ -34,6 +34,17 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
 	}
 
+	@ExceptionHandler(InvalidPaymentStateException.class)
+	public ResponseEntity<ErrorResponse> handleInvalidPaymentState(InvalidPaymentStateException exception) {
+		ErrorResponse errorResponse = new ErrorResponse(
+				LocalDateTime.now(),
+				HttpStatus.CONFLICT.value(),
+				"Conflict",
+				exception.getMessage());
+
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
+	}
+
 	@ExceptionHandler(RazorpayPaymentException.class)
 	public ResponseEntity<ErrorResponse> handleRazorpayPayment(RazorpayPaymentException exception) {
 		ErrorResponse errorResponse = new ErrorResponse(

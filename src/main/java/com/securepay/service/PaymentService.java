@@ -30,6 +30,7 @@ import com.securepay.entity.Payment;
 import com.securepay.entity.PaymentStatus;
 import com.securepay.entity.User;
 import com.securepay.exception.InvalidPaymentException;
+import com.securepay.exception.InvalidPaymentStateException;
 import com.securepay.exception.InvalidWebhookException;
 import com.securepay.exception.RazorpayPaymentException;
 import com.securepay.exception.ResourceNotFoundException;
@@ -93,6 +94,7 @@ public class PaymentService {
 		Order order = orderRepository.findByIdAndUserId(orderId, user.getId())
 				.orElseThrow(() -> new ResourceNotFoundException(
 						"Order not found with id: " + orderId));
+		ensurePaymentAllowed(order);
 
 		Payment payment = paymentRepository.findByOrderId(orderId)
 				.orElseGet(() -> paymentRepository.save(
@@ -156,6 +158,10 @@ public class PaymentService {
 			throw new InvalidPaymentException("Payment verification failed");
 		}
 
+		if (payment.getStatus() == PaymentStatus.SUCCESS) {
+			return toPaymentResponse(payment);
+		}
+
 		payment.setRazorpayPaymentId(request.getRazorpayPaymentId());
 		payment.setStatus(PaymentStatus.SUCCESS);
 		paymentRepository.save(payment);
@@ -172,6 +178,7 @@ public class PaymentService {
 		Order order = orderRepository.findByIdAndUserId(orderId, user.getId())
 				.orElseThrow(() -> new ResourceNotFoundException(
 						"Order not found with id: " + orderId));
+		ensurePaymentAllowed(order);
 
 		Payment payment = paymentRepository.findByOrderId(orderId)
 				.orElseThrow(() -> new ResourceNotFoundException(
@@ -201,6 +208,13 @@ public class PaymentService {
 			return toRazorpayOrderResponse(savedPayment, razorpayOrderId);
 		} catch (RazorpayException exception) {
 			throw new RazorpayPaymentException("Unable to communicate with Razorpay", exception);
+		}
+	}
+
+	private void ensurePaymentAllowed(Order order) {
+		if (order.getStatus() != OrderStatus.CREATED
+				&& order.getStatus() != OrderStatus.PAYMENT_PENDING) {
+			throw new InvalidPaymentStateException();
 		}
 	}
 
