@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import com.securepay.dto.product.ProductCreateRequest;
 import com.securepay.dto.product.ProductResponse;
+import com.securepay.dto.product.ProductUpdateRequest;
 import com.securepay.entity.Product;
 import com.securepay.exception.ResourceNotFoundException;
 import com.securepay.repository.ProductRepository;
@@ -42,6 +43,29 @@ public class ProductService {
 				.orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
 
 		return toProductResponse(product);
+	}
+
+	public ProductResponse updateProduct(Long id, ProductUpdateRequest request) {
+		Product product = findProductById(id);
+		product.setName(request.getName());
+		product.setDescription(request.getDescription());
+		product.setPrice(request.getPrice());
+		product.setStockQuantity(request.getStockQuantity());
+		product.setActive(request.getActive());
+
+		return toProductResponse(productRepository.save(product));
+	}
+
+	public ProductResponse deactivateProduct(Long id) {
+		Product product = findProductById(id);
+		product.setActive(false);
+
+		return toProductResponse(productRepository.save(product));
+	}
+
+	private Product findProductById(Long id) {
+		return productRepository.findById(id)
+				.orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
 	}
 
 	private ProductResponse toProductResponse(Product product) {
