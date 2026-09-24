@@ -1,13 +1,17 @@
 package com.securepay.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -18,6 +22,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.jpa.repository.Lock;
 
 import com.razorpay.RazorpayClient;
 import com.securepay.entity.Order;
@@ -27,6 +32,8 @@ import com.securepay.entity.PaymentStatus;
 import com.securepay.exception.InvalidWebhookException;
 import com.securepay.repository.OrderRepository;
 import com.securepay.repository.PaymentRepository;
+
+import jakarta.persistence.LockModeType;
 
 class PaymentServiceWebhookTest {
 
@@ -53,10 +60,57 @@ class PaymentServiceWebhookTest {
 	}
 
 	@Test
-	void validSignatureProcessesPaymentCaptured() throws Exception {
+	void validSignatureProcessesPaymentCapturedAndUsesLockedLookup() throws Exception {
 		Order order = order(OrderStatus.PAYMENT_PENDING);
 		Payment payment = payment(order, PaymentStatus.PENDING);
-		when(paymentRepository.findByRazorpayOrderId(RAZORPAY_ORDER_ID))
+		when(paymentRepository.findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID))
+				.thenReturn(Optional.of(payment));
+
+		String payload = capturedPayload();
+		paymentService.processRazorpayWebhook(payload, sign(payload));
+
+		assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
+		assertEquals(RAZORPAY_PAYMENT_ID, payment.getRazorpayPaymentId());
+		assertEquals(OrderStatus.PAID, order.getStatus());
+		verify(paymentRepository).findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID);
+		verify(paymentRepository, never()).findByRazorpayOrderId(RAZORPAY_ORDER_ID);
+		verify(paymentRepository).save(payment);
+		verify(orderRepository).save(order);
+	}
+
+	@Test
+	void webhookLookupMethodUsesPessimisticWriteLock() throws Exception {
+		Method method = PaymentRepository.class.getMethod(
+				"findByRazorpayOrderIdForUpdate", String.class);
+
+		assertNotNull(method.getAnnotation(Lock.class));
+		assertEquals(LockModeType.PESSIMISTIC_WRITE, method.getAnnotation(Lock.class).value());
+	}
+
+	@Test
+	void repeatedPaymentCapturedEventDoesNotSaveAgain() throws Exception {
+		Order order = order(OrderStatus.PAYMENT_PENDING);
+		Payment payment = payment(order, PaymentStatus.PENDING);
+		when(paymentRepository.findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID))
+				.thenReturn(Optional.of(payment));
+
+		String payload = capturedPayload();
+		String signature = sign(payload);
+		paymentService.processRazorpayWebhook(payload, signature);
+		paymentService.processRazorpayWebhook(payload, signature);
+
+		verify(paymentRepository, times(1)).save(payment);
+		verify(orderRepository, times(1)).save(order);
+		assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
+		assertEquals(OrderStatus.PAID, order.getStatus());
+	}
+
+	@Test
+	void paymentCapturedFillsMissingPaymentIdAfterOrderPaid() throws Exception {
+		Order order = order(OrderStatus.PAID);
+		Payment payment = payment(order, PaymentStatus.SUCCESS);
+		payment.setRazorpayPaymentId(null);
+		when(paymentRepository.findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID))
 				.thenReturn(Optional.of(payment));
 
 		String payload = capturedPayload();
@@ -66,25 +120,31 @@ class PaymentServiceWebhookTest {
 		assertEquals(RAZORPAY_PAYMENT_ID, payment.getRazorpayPaymentId());
 		assertEquals(OrderStatus.PAID, order.getStatus());
 		verify(paymentRepository).save(payment);
-		verify(orderRepository).save(order);
+		verify(orderRepository, never()).save(any(Order.class));
 	}
 
 	@Test
-	void invalidSignatureIsRejected() {
+	void paymentCapturedDoesNotOverwriteExistingPaymentIdOrRewriteSuccessfulState() throws Exception {
+		Order order = order(OrderStatus.PAID);
+		Payment payment = payment(order, PaymentStatus.SUCCESS);
+		payment.setRazorpayPaymentId("pay_existing");
+		when(paymentRepository.findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID))
+				.thenReturn(Optional.of(payment));
+
 		String payload = capturedPayload();
+		paymentService.processRazorpayWebhook(payload, sign(payload));
 
-		assertThrows(
-				InvalidWebhookException.class,
-				() -> paymentService.processRazorpayWebhook(payload, "invalid-signature"));
-
-		verifyNoInteractions(paymentRepository, orderRepository);
+		assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
+		assertEquals("pay_existing", payment.getRazorpayPaymentId());
+		verify(paymentRepository, never()).save(any(Payment.class));
+		verify(orderRepository, never()).save(any(Order.class));
 	}
 
 	@Test
 	void paymentFailedMarksPaymentFailedWithoutPayingOrder() throws Exception {
 		Order order = order(OrderStatus.PAYMENT_PENDING);
 		Payment payment = payment(order, PaymentStatus.PENDING);
-		when(paymentRepository.findByRazorpayOrderId(RAZORPAY_ORDER_ID))
+		when(paymentRepository.findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID))
 				.thenReturn(Optional.of(payment));
 
 		String payload = failedPayload();
@@ -97,28 +157,27 @@ class PaymentServiceWebhookTest {
 	}
 
 	@Test
-	void repeatedPaymentCapturedEventIsIdempotent() throws Exception {
+	void repeatedPaymentFailedEventDoesNotSaveAgain() throws Exception {
 		Order order = order(OrderStatus.PAYMENT_PENDING);
 		Payment payment = payment(order, PaymentStatus.PENDING);
-		when(paymentRepository.findByRazorpayOrderId(RAZORPAY_ORDER_ID))
+		when(paymentRepository.findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID))
 				.thenReturn(Optional.of(payment));
 
-		String payload = capturedPayload();
+		String payload = failedPayload();
 		String signature = sign(payload);
 		paymentService.processRazorpayWebhook(payload, signature);
 		paymentService.processRazorpayWebhook(payload, signature);
 
-		verify(paymentRepository).save(payment);
-		verify(orderRepository).save(order);
-		assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
-		assertEquals(OrderStatus.PAID, order.getStatus());
+		assertEquals(PaymentStatus.FAILED, payment.getStatus());
+		verify(paymentRepository, times(1)).save(payment);
+		verify(orderRepository, never()).save(any(Order.class));
 	}
 
 	@Test
 	void paymentFailedAfterSuccessDoesNotDowngradePayment() throws Exception {
 		Order order = order(OrderStatus.PAYMENT_PENDING);
 		Payment payment = payment(order, PaymentStatus.PENDING);
-		when(paymentRepository.findByRazorpayOrderId(RAZORPAY_ORDER_ID))
+		when(paymentRepository.findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID))
 				.thenReturn(Optional.of(payment));
 
 		String capturedPayload = capturedPayload();
@@ -133,14 +192,12 @@ class PaymentServiceWebhookTest {
 	}
 
 	@Test
-	void orderPaidEventMakesPaymentAndOrderSuccessful() throws Exception {
+	void firstOrderPaidEventMakesPaymentAndOrderSuccessful() throws Exception {
 		Order order = order(OrderStatus.PAYMENT_PENDING);
 		Payment payment = payment(order, PaymentStatus.PENDING);
-		when(paymentRepository.findByRazorpayOrderId(RAZORPAY_ORDER_ID))
+		when(paymentRepository.findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID))
 				.thenReturn(Optional.of(payment));
-		String payload = """
-				{"event":"order.paid","payload":{"order":{"entity":{"id":"order_test_123"}}}}
-				""";
+		String payload = orderPaidPayload();
 
 		paymentService.processRazorpayWebhook(payload, sign(payload));
 
@@ -151,8 +208,138 @@ class PaymentServiceWebhookTest {
 	}
 
 	@Test
+	void repeatedOrderPaidEventDoesNotSaveAgain() throws Exception {
+		Order order = order(OrderStatus.PAYMENT_PENDING);
+		Payment payment = payment(order, PaymentStatus.PENDING);
+		when(paymentRepository.findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID))
+				.thenReturn(Optional.of(payment));
+		String payload = orderPaidPayload();
+		String signature = sign(payload);
+
+		paymentService.processRazorpayWebhook(payload, signature);
+		paymentService.processRazorpayWebhook(payload, signature);
+
+		assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
+		assertEquals(OrderStatus.PAID, order.getStatus());
+		verify(paymentRepository, times(1)).save(payment);
+		verify(orderRepository, times(1)).save(order);
+	}
+
+	@Test
+	void orderPaidAfterPaymentCapturedDoesNotRewriteSuccessfulRecords() throws Exception {
+		Order order = order(OrderStatus.PAYMENT_PENDING);
+		Payment payment = payment(order, PaymentStatus.PENDING);
+		when(paymentRepository.findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID))
+				.thenReturn(Optional.of(payment));
+		String captured = capturedPayload();
+		String paid = orderPaidPayload();
+
+		paymentService.processRazorpayWebhook(captured, sign(captured));
+		paymentService.processRazorpayWebhook(paid, sign(paid));
+
+		assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
+		assertEquals(OrderStatus.PAID, order.getStatus());
+		assertEquals(RAZORPAY_PAYMENT_ID, payment.getRazorpayPaymentId());
+		verify(paymentRepository, times(1)).save(payment);
+		verify(orderRepository, times(1)).save(order);
+	}
+
+	@Test
+	void orderPaidDoesNotRegressFulfillmentOrCancelledOrderStatuses() throws Exception {
+		for (OrderStatus status : new OrderStatus[] {
+				OrderStatus.PROCESSING,
+				OrderStatus.SHIPPED,
+				OrderStatus.DELIVERED,
+				OrderStatus.CANCELLED }) {
+			Order order = order(status);
+			Payment payment = payment(order, PaymentStatus.PENDING);
+			when(paymentRepository.findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID))
+					.thenReturn(Optional.of(payment));
+			String payload = orderPaidPayload();
+
+			paymentService.processRazorpayWebhook(payload, sign(payload));
+
+			assertEquals(status, order.getStatus(), status.name());
+			assertEquals(PaymentStatus.SUCCESS, payment.getStatus(), status.name());
+			verify(paymentRepository).save(payment);
+			verify(orderRepository, never()).save(order);
+			org.mockito.Mockito.clearInvocations(paymentRepository, orderRepository);
+		}
+	}
+
+	@Test
+	void orderPaidAllowsCreatedAndPaymentPendingOrders() throws Exception {
+		for (OrderStatus status : new OrderStatus[] { OrderStatus.CREATED, OrderStatus.PAYMENT_PENDING }) {
+			Order order = order(status);
+			Payment payment = payment(order, PaymentStatus.PENDING);
+			when(paymentRepository.findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID))
+					.thenReturn(Optional.of(payment));
+			String payload = orderPaidPayload();
+
+			paymentService.processRazorpayWebhook(payload, sign(payload));
+
+			assertEquals(OrderStatus.PAID, order.getStatus(), status.name());
+			assertEquals(PaymentStatus.SUCCESS, payment.getStatus(), status.name());
+			verify(paymentRepository).save(payment);
+			verify(orderRepository).save(order);
+			org.mockito.Mockito.clearInvocations(paymentRepository, orderRepository);
+		}
+	}
+
+	@Test
+	void invalidSignatureIsRejectedBeforeRepositoryAccess() {
+		String payload = capturedPayload();
+
+		assertThrows(
+				InvalidWebhookException.class,
+				() -> paymentService.processRazorpayWebhook(payload, "invalid-signature"));
+
+		verifyNoInteractions(paymentRepository, orderRepository);
+	}
+
+	@Test
+	void missingSignatureIsRejectedBeforeRepositoryAccess() {
+		assertThrows(
+				InvalidWebhookException.class,
+				() -> paymentService.processRazorpayWebhook(capturedPayload(), null));
+
+		verifyNoInteractions(paymentRepository, orderRepository);
+	}
+
+	@Test
+	void malformedJsonWithValidSignatureIsRejected() throws Exception {
+		String payload = "{not-json";
+
+		assertThrows(
+				InvalidWebhookException.class,
+				() -> paymentService.processRazorpayWebhook(payload, sign(payload)));
+
+		verifyNoInteractions(paymentRepository, orderRepository);
+	}
+
+	@Test
+	void missingOrNullEventIsRejectedWithoutRepositoryAccess() throws Exception {
+		for (String payload : new String[] { "{}", "{\"event\":null}" }) {
+			assertThrows(
+					InvalidWebhookException.class,
+					() -> paymentService.processRazorpayWebhook(payload, sign(payload)));
+		}
+
+		verifyNoInteractions(paymentRepository, orderRepository);
+	}
+
+	@Test
+	void unknownValidEventIsIgnored() throws Exception {
+		String payload = "{\"event\":\"subscription.activated\"}";
+
+		paymentService.processRazorpayWebhook(payload, sign(payload));
+
+		verifyNoInteractions(paymentRepository, orderRepository);
+	}
+
+	@Test
 	void unknownRazorpayOrderIdIsIgnored() throws Exception {
-		when(paymentRepository.findByRazorpayOrderId("order_unknown"))
+		when(paymentRepository.findByRazorpayOrderIdForUpdate("order_unknown"))
 				.thenReturn(Optional.empty());
 		String payload = """
 				{"event":"payment.captured","payload":{"payment":{"entity":{"id":"pay_unknown","order_id":"order_unknown"}}}}
@@ -160,8 +347,8 @@ class PaymentServiceWebhookTest {
 
 		paymentService.processRazorpayWebhook(payload, sign(payload));
 
-		verify(paymentRepository).findByRazorpayOrderId("order_unknown");
-		verify(paymentRepository, never()).save(org.mockito.ArgumentMatchers.any());
+		verify(paymentRepository).findByRazorpayOrderIdForUpdate("order_unknown");
+		verify(paymentRepository, never()).save(any(Payment.class));
 		verifyNoInteractions(orderRepository);
 	}
 
@@ -184,6 +371,12 @@ class PaymentServiceWebhookTest {
 	private String failedPayload() {
 		return """
 				{"event":"payment.failed","payload":{"payment":{"entity":{"id":"pay_test_123","order_id":"order_test_123"}}}}
+				""";
+	}
+
+	private String orderPaidPayload() {
+		return """
+				{"event":"order.paid","payload":{"order":{"entity":{"id":"order_test_123"}}}}
 				""";
 	}
 

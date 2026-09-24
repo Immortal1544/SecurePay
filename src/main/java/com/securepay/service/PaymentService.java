@@ -78,6 +78,10 @@ public class PaymentService {
 		}
 
 		String event = textAt(webhook, "event");
+		if (event == null) {
+			throw new InvalidWebhookException("Missing webhook event");
+		}
+
 		switch (event) {
 		case "payment.captured" -> processCapturedPayment(webhook);
 		case "payment.failed" -> processFailedPayment(webhook);
@@ -223,7 +227,15 @@ public class PaymentService {
 		String razorpayPaymentId = textAt(webhook, "payload", "payment", "entity", "id");
 		Payment payment = findPayment(razorpayOrderId);
 
-		if (payment == null || payment.getStatus() == PaymentStatus.SUCCESS) {
+		if (payment == null) {
+			return;
+		}
+
+		if (payment.getStatus() == PaymentStatus.SUCCESS) {
+			if (payment.getRazorpayPaymentId() == null && razorpayPaymentId != null) {
+				payment.setRazorpayPaymentId(razorpayPaymentId);
+				paymentRepository.save(payment);
+			}
 			return;
 		}
 
@@ -240,7 +252,9 @@ public class PaymentService {
 		String razorpayOrderId = textAt(webhook, "payload", "payment", "entity", "order_id");
 		Payment payment = findPayment(razorpayOrderId);
 
-		if (payment == null || payment.getStatus() == PaymentStatus.SUCCESS) {
+		if (payment == null
+				|| payment.getStatus() == PaymentStatus.SUCCESS
+				|| payment.getStatus() == PaymentStatus.FAILED) {
 			return;
 		}
 
@@ -256,10 +270,17 @@ public class PaymentService {
 			return;
 		}
 
-		payment.setStatus(PaymentStatus.SUCCESS);
-		payment.getOrder().setStatus(OrderStatus.PAID);
-		paymentRepository.save(payment);
-		orderRepository.save(payment.getOrder());
+		if (payment.getStatus() != PaymentStatus.SUCCESS) {
+			payment.setStatus(PaymentStatus.SUCCESS);
+			paymentRepository.save(payment);
+		}
+
+		Order order = payment.getOrder();
+		if (order.getStatus() == OrderStatus.CREATED
+				|| order.getStatus() == OrderStatus.PAYMENT_PENDING) {
+			order.setStatus(OrderStatus.PAID);
+			orderRepository.save(order);
+		}
 	}
 
 	private Payment findPayment(String razorpayOrderId) {
@@ -267,7 +288,7 @@ public class PaymentService {
 			return null;
 		}
 
-		return paymentRepository.findByRazorpayOrderId(razorpayOrderId).orElse(null);
+		return paymentRepository.findByRazorpayOrderIdForUpdate(razorpayOrderId).orElse(null);
 	}
 
 	private String textAt(JSONObject root, String... path) {
