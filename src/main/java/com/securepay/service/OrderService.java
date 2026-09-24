@@ -18,6 +18,7 @@ import com.securepay.entity.OrderItem;
 import com.securepay.entity.OrderStatus;
 import com.securepay.entity.Product;
 import com.securepay.entity.User;
+import com.securepay.exception.InactiveProductException;
 import com.securepay.exception.ResourceNotFoundException;
 import com.securepay.repository.CartItemRepository;
 import com.securepay.repository.CartRepository;
@@ -66,8 +67,7 @@ public class OrderService {
 		for (CartItem cartItem : cartItems) {
 			Product product = cartItem.getProduct();
 			if (!Boolean.TRUE.equals(product.getActive())) {
-				throw new IllegalStateException("Cannot create order with inactive product: "
-						+ product.getName());
+				throw new InactiveProductException();
 			}
 
 			int requestedQuantity = cartItem.getQuantity();

@@ -17,6 +17,7 @@ import com.securepay.entity.Cart;
 import com.securepay.entity.CartItem;
 import com.securepay.entity.Product;
 import com.securepay.entity.User;
+import com.securepay.exception.InactiveProductException;
 import com.securepay.exception.ResourceNotFoundException;
 import com.securepay.repository.CartItemRepository;
 import com.securepay.repository.CartRepository;
@@ -52,14 +53,14 @@ public class CartService {
 
 	public CartResponse addToCart(AddToCartRequest request) {
 		User user = getCurrentUser();
-		Cart cart = getOrCreateCart(user);
 		Product product = productRepository.findById(request.getProductId())
 				.orElseThrow(() -> new ResourceNotFoundException(
 						"Product not found with id: " + request.getProductId()));
 
 		if (!Boolean.TRUE.equals(product.getActive())) {
-			throw new IllegalStateException("Cannot add inactive product to cart");
+			throw new InactiveProductException();
 		}
+		Cart cart = getOrCreateCart(user);
 
 		CartItem cartItem = cartItemRepository.findByCartIdAndProductId(cart.getId(), product.getId())
 				.map(existingItem -> {
@@ -76,6 +77,9 @@ public class CartService {
 		User user = getCurrentUser();
 		CartItem cartItem = getCartItem(cartItemId);
 		verifyOwnership(cartItem, user);
+		if (!Boolean.TRUE.equals(cartItem.getProduct().getActive())) {
+			throw new InactiveProductException();
+		}
 
 		cartItem.setQuantity(request.getQuantity());
 		cartItemRepository.save(cartItem);
