@@ -895,6 +895,426 @@ h2 {
   opacity: 0.65;
 }
 
+.admin-page {
+  margin: 0 auto;
+  max-width: 1280px;
+  padding: 56px 32px 88px;
+}
+
+.admin-header,
+.admin-section-heading,
+.admin-card-heading,
+.admin-order-summary,
+.admin-order-controls,
+.admin-product-meta,
+.admin-row-actions {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.admin-header {
+  align-items: flex-end;
+  border-bottom: 1px solid var(--line);
+  gap: 24px;
+  margin-bottom: 42px;
+  padding-bottom: 32px;
+}
+
+.admin-header h1 {
+  font-size: clamp(42px, 6vw, 66px);
+}
+
+.admin-description {
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.6;
+  margin: 16px 0 0;
+}
+
+.admin-back-link {
+  color: var(--teal-dark);
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.admin-back-link:hover,
+.admin-text-button:hover {
+  color: var(--coral);
+}
+
+.admin-section {
+  margin-top: 38px;
+}
+
+.admin-section-heading {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+}
+
+.admin-section-heading .eyebrow {
+  margin-bottom: 8px;
+}
+
+.admin-section-heading h2 {
+  font-size: clamp(28px, 4vw, 38px);
+}
+
+.admin-count,
+.admin-status {
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding: 7px 10px;
+  text-transform: uppercase;
+}
+
+.admin-count {
+  background: var(--mint);
+  color: var(--teal-dark);
+}
+
+.admin-product-layout {
+  align-items: start;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+}
+
+.admin-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px;
+}
+
+.admin-product-form {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  scroll-margin-top: 20px;
+}
+
+.admin-card h3 {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.admin-card-heading {
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.admin-card-heading h3 {
+  overflow-wrap: anywhere;
+}
+
+.admin-product-form label {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 5px;
+}
+
+.admin-product-form input:not([type='checkbox']),
+.admin-product-form textarea,
+.admin-order-controls select {
+  background: #fbfcfa;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font: inherit;
+  min-width: 0;
+  padding: 11px 12px;
+  width: 100%;
+}
+
+.admin-product-form textarea {
+  resize: vertical;
+}
+
+.admin-product-form input:focus,
+.admin-product-form textarea:focus,
+.admin-order-controls select:focus {
+  border-color: var(--teal);
+  outline: 3px solid rgba(15, 119, 112, 0.14);
+}
+
+.admin-form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-form-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-checkbox-label {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+  margin: 8px 0;
+}
+
+.admin-checkbox-label input {
+  accent-color: var(--teal);
+  height: 16px;
+  width: 16px;
+}
+
+.admin-primary-button,
+.admin-secondary-button,
+.admin-danger-button {
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 10px 14px;
+}
+
+.admin-primary-button {
+  background: var(--teal);
+  color: white;
+  margin-top: 6px;
+}
+
+.admin-primary-button:hover:not(:disabled) {
+  background: var(--teal-dark);
+}
+
+.admin-secondary-button {
+  background: var(--mint);
+  color: var(--teal-dark);
+}
+
+.admin-secondary-button:hover:not(:disabled) {
+  background: #c7e5d8;
+}
+
+.admin-danger-button {
+  background: #fff1ed;
+  color: #9a3e2e;
+}
+
+.admin-danger-button:hover:not(:disabled) {
+  background: #ffe1d8;
+}
+
+.admin-primary-button:disabled,
+.admin-secondary-button:disabled,
+.admin-danger-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.admin-text-button {
+  background: transparent;
+  border: 0;
+  color: var(--teal-dark);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.admin-product-list,
+.admin-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.admin-empty {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.admin-product-row {
+  align-items: center;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+}
+
+.admin-row-main {
+  min-width: 0;
+}
+
+.admin-row-main > p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 10px 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-status-active {
+  background: var(--mint);
+  color: var(--teal-dark);
+}
+
+.admin-status-inactive {
+  background: #e4e6e2;
+  color: var(--muted);
+}
+
+.admin-product-meta {
+  color: var(--ink);
+  justify-content: flex-start;
+  gap: 18px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-row-actions {
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.admin-message {
+  border-left: 3px solid var(--teal);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 14px;
+  padding: 10px 13px;
+}
+
+.admin-error {
+  background: #fff1ed;
+  border-color: var(--coral);
+  color: #9a3e2e;
+}
+
+.admin-success {
+  background: #edf8f1;
+  color: var(--teal-dark);
+}
+
+.admin-order-card {
+  padding: 0;
+}
+
+.admin-order-summary {
+  gap: 20px;
+  padding: 20px 22px;
+}
+
+.admin-order-summary > div {
+  min-width: 0;
+}
+
+.admin-order-summary > div > strong {
+  color: var(--ink);
+  display: block;
+  font-size: 14px;
+  margin-top: 7px;
+}
+
+.admin-label {
+  color: var(--muted);
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-order-summary h3 {
+  margin-top: 6px;
+}
+
+.admin-status-order {
+  background: var(--mint);
+  color: var(--teal-dark);
+  display: inline-block;
+  margin-top: 5px;
+  white-space: nowrap;
+}
+
+.admin-order-details {
+  border-top: 1px solid var(--line);
+  padding: 18px 22px;
+}
+
+.admin-order-details h4 {
+  color: var(--ink);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+.admin-order-item {
+  align-items: baseline;
+  border-top: 1px solid #edf0ed;
+  color: var(--muted);
+  display: flex;
+  font-size: 13px;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 10px 0;
+}
+
+.admin-order-item strong {
+  color: var(--ink);
+  flex-shrink: 0;
+}
+
+.admin-order-details > p,
+.admin-customer-note {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 10px 0 0;
+}
+
+.admin-order-controls {
+  border-top: 1px solid var(--line);
+  gap: 16px;
+  justify-content: flex-start;
+  padding: 14px 22px;
+}
+
+.admin-order-controls .admin-label {
+  flex-shrink: 0;
+}
+
+.admin-order-controls select {
+  max-width: 220px;
+  padding: 9px 11px;
+}
+
+.admin-terminal-status,
+.admin-inline-progress {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .admin-order-summary {
+    align-items: flex-start;
+    display: grid;
+    gap: 18px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-order-summary .admin-row-actions {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 720px) {
   .navbar {
     align-items: flex-start;
@@ -904,8 +1324,54 @@ h2 {
   }
 
   .nav-links {
+    flex-wrap: wrap;
     gap: 18px;
     width: 100%;
+  }
+
+  .admin-page {
+    padding: 48px 20px 72px;
+  }
+
+  .admin-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-product-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-product-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-row-actions {
+    flex-wrap: wrap;
+  }
+
+  .admin-order-summary {
+    padding: 18px;
+  }
+
+  .admin-order-controls {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 9px;
+    padding: 14px 18px;
+  }
+
+  .admin-order-controls select {
+    max-width: none;
+  }
+
+  .admin-order-details {
+    padding: 16px 18px;
+  }
+
+  .admin-order-item {
+    align-items: flex-start;
   }
 
   .welcome-section {

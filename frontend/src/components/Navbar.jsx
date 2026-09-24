@@ -1,6 +1,11 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import { getCurrentUser, getToken } from '../services/authService'
 
 function Navbar() {
+  const location = useLocation()
+  const currentUser = getCurrentUser()
+  const isAdmin = Boolean(getToken() && currentUser?.role === 'ADMIN')
+
   return (
     <header className="site-header">
       <nav className="navbar" aria-label="Primary navigation">
@@ -16,6 +21,7 @@ function Navbar() {
           <Link className="nav-link" to="/products">Products</Link>
           <Link className="nav-link" to="/cart">Cart</Link>
           <Link className="nav-link" to="/orders">Orders</Link>
+          {isAdmin && <Link className={`nav-link${location.pathname.startsWith('/admin') ? ' active' : ''}`} to="/admin">Admin</Link>}
         </div>
       </nav>
     </header>
