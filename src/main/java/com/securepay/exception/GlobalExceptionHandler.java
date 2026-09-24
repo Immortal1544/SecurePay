@@ -68,6 +68,18 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
 	}
 
+	@ExceptionHandler(InvalidOrderStatusTransitionException.class)
+	public ResponseEntity<ErrorResponse> handleInvalidOrderStatusTransition(
+			InvalidOrderStatusTransitionException exception) {
+		ErrorResponse errorResponse = new ErrorResponse(
+				LocalDateTime.now(),
+				HttpStatus.CONFLICT.value(),
+				"Conflict",
+				exception.getMessage());
+
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
+	}
+
 	@ExceptionHandler(ResourceAlreadyExistsException.class)
 	public ResponseEntity<ErrorResponse> handleResourceAlreadyExists(
 			ResourceAlreadyExistsException exception) {

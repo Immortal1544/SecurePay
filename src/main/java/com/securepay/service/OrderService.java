@@ -19,6 +19,7 @@ import com.securepay.entity.OrderStatus;
 import com.securepay.entity.Product;
 import com.securepay.entity.User;
 import com.securepay.exception.InactiveProductException;
+import com.securepay.exception.InvalidOrderStatusTransitionException;
 import com.securepay.exception.ResourceNotFoundException;
 import com.securepay.repository.CartItemRepository;
 import com.securepay.repository.CartRepository;
@@ -135,6 +136,34 @@ public class OrderService {
 				.orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
 
 		return toOrderResponse(order);
+	}
+
+	@Transactional
+	public OrderResponse updateOrderStatus(Long orderId, OrderStatus newStatus) {
+		Order order = orderRepository.findById(orderId)
+				.orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
+
+		if (!isAllowedStatusTransition(order.getStatus(), newStatus)) {
+			throw new InvalidOrderStatusTransitionException();
+		}
+
+		order.setStatus(newStatus);
+		return toOrderResponse(orderRepository.save(order));
+	}
+
+	private boolean isAllowedStatusTransition(OrderStatus currentStatus, OrderStatus newStatus) {
+		if (newStatus == null) {
+			return false;
+		}
+
+		return switch (currentStatus) {
+		case CREATED -> newStatus == OrderStatus.PAYMENT_PENDING || newStatus == OrderStatus.CANCELLED;
+		case PAYMENT_PENDING -> newStatus == OrderStatus.CANCELLED;
+		case PAID -> newStatus == OrderStatus.PROCESSING || newStatus == OrderStatus.CANCELLED;
+		case PROCESSING -> newStatus == OrderStatus.SHIPPED || newStatus == OrderStatus.CANCELLED;
+		case SHIPPED -> newStatus == OrderStatus.DELIVERED;
+		case DELIVERED, CANCELLED -> false;
+		};
 	}
 
 	private User getCurrentUser() {

@@ -3,6 +3,7 @@ package com.securepay.controller;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -23,6 +25,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.securepay.config.SecurityConfig;
 import com.securepay.dto.order.OrderResponse;
 import com.securepay.entity.OrderStatus;
+import com.securepay.exception.InvalidOrderStatusTransitionException;
 import com.securepay.exception.ResourceNotFoundException;
 import com.securepay.security.JwtAuthenticationFilter;
 import com.securepay.service.OrderService;
@@ -98,6 +101,55 @@ class AdminOrderControllerSecurityTest {
 				.andExpect(status().isForbidden());
 		mockMvc.perform(get("/api/admin/orders/{orderId}", 42L))
 				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void adminCanUpdateOrderStatus() throws Exception {
+		OrderResponse response = orderResponse(42L);
+		response.setStatus(OrderStatus.PAYMENT_PENDING);
+		when(orderService.updateOrderStatus(42L, OrderStatus.PAYMENT_PENDING)).thenReturn(response);
+
+		mockMvc.perform(put("/api/admin/orders/{orderId}/status", 42L)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"status":"PAYMENT_PENDING"}
+						"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("PAYMENT_PENDING"));
+	}
+
+	@Test
+	void regularUserCannotUpdateOrderStatus() throws Exception {
+		authority = "ROLE_USER";
+
+		mockMvc.perform(put("/api/admin/orders/{orderId}/status", 42L)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"status":"PAYMENT_PENDING"}
+						"""))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void nullOrderStatusIsRejected() throws Exception {
+		mockMvc.perform(put("/api/admin/orders/{orderId}/status", 42L)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{}"))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void invalidOrderStatusTransitionReturnsConflict() throws Exception {
+		when(orderService.updateOrderStatus(42L, OrderStatus.PAID))
+				.thenThrow(new InvalidOrderStatusTransitionException());
+
+		mockMvc.perform(put("/api/admin/orders/{orderId}/status", 42L)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"status":"PAID"}
+						"""))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("Order status transition is not allowed"));
 	}
 
 	private OrderResponse orderResponse(Long orderId) {
