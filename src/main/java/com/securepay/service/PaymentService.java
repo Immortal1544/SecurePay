@@ -13,6 +13,7 @@ import org.json.JSONObject;
 import org.json.JSONException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,7 @@ import com.securepay.entity.Order;
 import com.securepay.entity.OrderStatus;
 import com.securepay.entity.Payment;
 import com.securepay.entity.PaymentStatus;
+import com.securepay.entity.Role;
 import com.securepay.entity.User;
 import com.securepay.exception.InvalidPaymentException;
 import com.securepay.exception.InvalidPaymentStateException;
@@ -121,6 +123,71 @@ public class PaymentService {
 		return toPaymentResponse(payment);
 	}
 
+	@Transactional(readOnly = true)
+	public PaymentResponse getPaymentForAdminOrder(Long orderId) {
+		ensureAdmin();
+		Payment payment = paymentRepository.findByOrderId(orderId)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Payment not found for order with id: " + orderId));
+		return toPaymentResponse(payment);
+	}
+
+	@Transactional
+	public PaymentResponse refundOrderPayment(Long orderId) {
+		ensureAdmin();
+		Payment payment = paymentRepository.findByOrderIdForUpdate(orderId)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Payment not found for order with id: " + orderId));
+
+		if (payment.getStatus() == PaymentStatus.REFUNDED) {
+			Order refundedOrder = payment.getOrder();
+			if (refundedOrder.getStatus() != OrderStatus.CANCELLED) {
+				refundedOrder.setStatus(OrderStatus.CANCELLED);
+				orderRepository.save(refundedOrder);
+			}
+			return toPaymentResponse(payment);
+		}
+		if (payment.getStatus() != PaymentStatus.SUCCESS) {
+			throw new InvalidPaymentStateException();
+		}
+		if (payment.getRazorpayPaymentId() == null || payment.getRazorpayPaymentId().isBlank()) {
+			throw new InvalidPaymentStateException();
+		}
+
+		Order order = payment.getOrder();
+		if (order.getStatus() != OrderStatus.PAID
+				&& order.getStatus() != OrderStatus.PROCESSING
+				&& order.getStatus() != OrderStatus.CANCELLED) {
+			throw new InvalidPaymentStateException();
+		}
+
+		int amountInPaise;
+		try {
+			amountInPaise = payment.getAmount()
+					.multiply(BigDecimal.valueOf(100))
+					.toBigIntegerExact()
+					.intValueExact();
+		} catch (ArithmeticException exception) {
+			throw new InvalidPaymentStateException();
+		}
+
+		JSONObject refundRequest = new JSONObject();
+		refundRequest.put("amount", amountInPaise);
+		try {
+			razorpayClient.payments.refund(payment.getRazorpayPaymentId(), refundRequest);
+		} catch (RazorpayException exception) {
+			throw new RazorpayPaymentException("Unable to communicate with Razorpay", exception);
+		}
+
+		payment.setStatus(PaymentStatus.REFUNDED);
+		paymentRepository.save(payment);
+		if (order.getStatus() != OrderStatus.CANCELLED) {
+			order.setStatus(OrderStatus.CANCELLED);
+			orderRepository.save(order);
+		}
+		return toPaymentResponse(payment);
+	}
+
 	@Transactional
 	public List<PaymentResponse> getCurrentUserPayments() {
 		User user = getCurrentUser();
@@ -139,7 +206,7 @@ public class PaymentService {
 				.orElseThrow(() -> new ResourceNotFoundException(
 						"Order not found with id: " + orderId));
 
-		Payment payment = paymentRepository.findByOrderId(orderId)
+		Payment payment = paymentRepository.findByOrderIdForUpdate(orderId)
 				.orElseThrow(() -> new ResourceNotFoundException(
 						"Payment not found for order with id: " + orderId));
 
@@ -162,6 +229,9 @@ public class PaymentService {
 			throw new InvalidPaymentException("Payment verification failed");
 		}
 
+		if (payment.getStatus() == PaymentStatus.REFUNDED) {
+			return toPaymentResponse(payment);
+		}
 		if (payment.getStatus() == PaymentStatus.SUCCESS) {
 			return toPaymentResponse(payment);
 		}
@@ -230,6 +300,9 @@ public class PaymentService {
 		if (payment == null) {
 			return;
 		}
+		if (payment.getStatus() == PaymentStatus.REFUNDED) {
+			return;
+		}
 
 		if (payment.getStatus() == PaymentStatus.SUCCESS) {
 			if (payment.getRazorpayPaymentId() == null && razorpayPaymentId != null) {
@@ -254,6 +327,7 @@ public class PaymentService {
 
 		if (payment == null
 				|| payment.getStatus() == PaymentStatus.SUCCESS
+				|| payment.getStatus() == PaymentStatus.REFUNDED
 				|| payment.getStatus() == PaymentStatus.FAILED) {
 			return;
 		}
@@ -267,6 +341,9 @@ public class PaymentService {
 		Payment payment = findPayment(razorpayOrderId);
 
 		if (payment == null) {
+			return;
+		}
+		if (payment.getStatus() == PaymentStatus.REFUNDED) {
 			return;
 		}
 
@@ -339,6 +416,12 @@ public class PaymentService {
 		return userRepository.findByEmail(authentication.getName())
 				.orElseThrow(() -> new ResourceNotFoundException(
 						"Authenticated user not found with email: " + authentication.getName()));
+	}
+
+	private void ensureAdmin() {
+		if (getCurrentUser().getRole() != Role.ADMIN) {
+			throw new AccessDeniedException("Admin role required");
+		}
 	}
 
 	private CreatePaymentResponse toCreatePaymentResponse(Payment payment) {

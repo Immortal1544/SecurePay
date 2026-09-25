@@ -61,6 +61,16 @@ public class PaymentController {
 		return ResponseEntity.ok(paymentService.getPaymentForOrder(orderId));
 	}
 
+	@GetMapping("/admin/orders/{orderId}")
+	public ResponseEntity<PaymentResponse> getPaymentForAdminOrder(@PathVariable Long orderId) {
+		return ResponseEntity.ok(paymentService.getPaymentForAdminOrder(orderId));
+	}
+
+	@PostMapping("/orders/{orderId}/refund")
+	public ResponseEntity<PaymentResponse> refundOrderPayment(@PathVariable Long orderId) {
+		return ResponseEntity.ok(paymentService.refundOrderPayment(orderId));
+	}
+
 	@GetMapping
 	public ResponseEntity<List<PaymentResponse>> getCurrentUserPayments() {
 		return ResponseEntity.ok(paymentService.getCurrentUserPayments());

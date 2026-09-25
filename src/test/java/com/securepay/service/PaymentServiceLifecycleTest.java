@@ -150,7 +150,7 @@ class PaymentServiceLifecycleTest {
 		Order order = order(OrderStatus.PAYMENT_PENDING);
 		Payment payment = payment(order, PaymentStatus.PENDING);
 		when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
-		when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
+		when(paymentRepository.findByOrderIdForUpdate(ORDER_ID)).thenReturn(Optional.of(payment));
 		VerifyPaymentRequest request = request(RAZORPAY_ORDER_ID, RAZORPAY_PAYMENT_ID,
 				signature(RAZORPAY_ORDER_ID, RAZORPAY_PAYMENT_ID));
 
@@ -171,7 +171,7 @@ class PaymentServiceLifecycleTest {
 		LocalDateTime previousUpdatedAt = LocalDateTime.of(2024, 1, 2, 3, 4);
 		payment.setUpdatedAt(previousUpdatedAt);
 		when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
-		when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
+		when(paymentRepository.findByOrderIdForUpdate(ORDER_ID)).thenReturn(Optional.of(payment));
 		String repeatedPaymentId = "pay_other_valid";
 
 		var response = paymentService.verifyPayment(ORDER_ID, request(
@@ -192,7 +192,7 @@ class PaymentServiceLifecycleTest {
 		Order order = order(OrderStatus.PAYMENT_PENDING);
 		Payment payment = payment(order, PaymentStatus.PENDING);
 		when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
-		when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
+		when(paymentRepository.findByOrderIdForUpdate(ORDER_ID)).thenReturn(Optional.of(payment));
 
 		assertThrows(InvalidPaymentException.class,
 				() -> paymentService.verifyPayment(ORDER_ID,
@@ -206,7 +206,7 @@ class PaymentServiceLifecycleTest {
 		Order order = order(OrderStatus.PAYMENT_PENDING);
 		Payment payment = payment(order, PaymentStatus.PENDING);
 		when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
-		when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
+		when(paymentRepository.findByOrderIdForUpdate(ORDER_ID)).thenReturn(Optional.of(payment));
 
 		assertThrows(InvalidPaymentException.class,
 				() -> paymentService.verifyPayment(ORDER_ID,
@@ -230,7 +230,7 @@ class PaymentServiceLifecycleTest {
 		Order order = order(OrderStatus.PAID);
 		Payment payment = payment(order, PaymentStatus.SUCCESS);
 		when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
-		when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
+		when(paymentRepository.findByOrderIdForUpdate(ORDER_ID)).thenReturn(Optional.of(payment));
 
 		assertThrows(InvalidPaymentException.class,
 				() -> paymentService.verifyPayment(ORDER_ID,

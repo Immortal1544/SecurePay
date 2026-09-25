@@ -46,6 +46,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/payments/webhook/razorpay").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/payments/orders/{orderId}/refund").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/payments/admin/orders/{orderId}").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/products").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/products/{id}").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/products/{id}").hasRole("ADMIN")

@@ -5,6 +5,7 @@ import { getToken } from '../services/authService'
 const API_BASE_URL = 'http://localhost:8080'
 const PRODUCT_URL = `${API_BASE_URL}/api/products`
 const ADMIN_ORDER_URL = `${API_BASE_URL}/api/admin/orders`
+const ADMIN_PAYMENT_URL = `${API_BASE_URL}/api/payments/admin/orders`
 const EMPTY_PRODUCT = {
   name: '',
   description: '',
@@ -94,8 +95,11 @@ function AdminDashboard() {
   const [deactivatingProductId, setDeactivatingProductId] = useState(null)
   const [selectedOrderId, setSelectedOrderId] = useState(null)
   const [orderDetails, setOrderDetails] = useState(null)
+  const [orderPayment, setOrderPayment] = useState(null)
+  const [paymentLookupError, setPaymentLookupError] = useState('')
   const [isLoadingOrderDetails, setIsLoadingOrderDetails] = useState(false)
   const [updatingOrderId, setUpdatingOrderId] = useState(null)
+  const [refundingOrderId, setRefundingOrderId] = useState(null)
 
   const loadProducts = useCallback(async () => {
     try {
@@ -220,20 +224,66 @@ function AdminDashboard() {
     if (selectedOrderId === orderId) {
       setSelectedOrderId(null)
       setOrderDetails(null)
+      setOrderPayment(null)
+      setPaymentLookupError('')
       return
     }
 
     setSelectedOrderId(orderId)
     setOrderDetails(null)
+    setOrderPayment(null)
+    setPaymentLookupError('')
     setOrderError('')
     setIsLoadingOrderDetails(true)
     try {
       const data = await requestJson(`${ADMIN_ORDER_URL}/${orderId}`)
       setOrderDetails(data)
+      try {
+        const payment = await requestJson(`${ADMIN_PAYMENT_URL}/${orderId}`)
+        setOrderPayment(payment)
+      } catch (error) {
+        if (!error.message?.includes('not found')) {
+          setPaymentLookupError(error.message || 'Unable to load payment status.')
+        }
+      }
     } catch (error) {
       setOrderError(error.message || 'Unable to load order details.')
     } finally {
       setIsLoadingOrderDetails(false)
+    }
+  }
+
+  async function refundOrder(order) {
+    if (refundingOrderId !== null || orderPayment?.status !== 'SUCCESS') {
+      return
+    }
+    const confirmed = window.confirm(
+      `Refund ${rupeeFormatter.format(Number(orderPayment.amount) || 0)} for order #${order.orderId}? This action cannot be undone.`,
+    )
+    if (!confirmed) {
+      return
+    }
+
+    setOrderError('')
+    setOrderNotice('')
+    setRefundingOrderId(order.orderId)
+    try {
+      const refundedPayment = await requestJson(`${API_BASE_URL}/api/payments/orders/${order.orderId}/refund`, {
+        method: 'POST',
+      })
+      setOrderPayment(refundedPayment)
+      setOrderNotice(`Order #${order.orderId} was refunded.`)
+      await loadOrders()
+      try {
+        const refreshedOrder = await requestJson(`${ADMIN_ORDER_URL}/${order.orderId}`)
+        setOrderDetails(refreshedOrder)
+      } catch (error) {
+        setOrderError(`Refund completed, but the order details could not be refreshed. ${error.message || ''}`.trim())
+      }
+    } catch (error) {
+      setOrderError(error.message || 'Unable to refund this payment.')
+    } finally {
+      setRefundingOrderId(null)
     }
   }
 
@@ -409,6 +459,25 @@ function AdminDashboard() {
                         </div>
                       )) : <p>No item details returned for this order.</p>}
                       <p className="admin-customer-note">Customer details are not included in the current admin order response.</p>
+                      <div className="admin-order-controls">
+                        <span className="admin-label">Payment</span>
+                        {orderPayment ? (
+                          <span className="admin-status admin-status-order">{formatStatus(orderPayment.status)}</span>
+                        ) : <span className="admin-terminal-status">{paymentLookupError || 'No payment recorded'}</span>}
+                        {orderPayment?.status === 'SUCCESS'
+                          && ['PAID', 'PROCESSING', 'CANCELLED'].includes(order.status)
+                          && (
+                            <button
+                              className="admin-danger-button"
+                              type="button"
+                              onClick={() => refundOrder(order)}
+                              disabled={refundingOrderId !== null}
+                            >
+                              {refundingOrderId === order.orderId ? 'Refunding...' : 'Refund payment'}
+                            </button>
+                          )}
+                        {refundingOrderId === order.orderId && <span className="admin-inline-progress">Refunding...</span>}
+                      </div>
                     </div>
                   )}
 

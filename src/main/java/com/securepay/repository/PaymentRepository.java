@@ -15,6 +15,10 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
 	Optional<Payment> findByOrderId(Long orderId);
 
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select p from Payment p where p.order.id = :orderId")
+	Optional<Payment> findByOrderIdForUpdate(@Param("orderId") Long orderId);
+
 	Optional<Payment> findByRazorpayOrderId(String razorpayOrderId);
 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
