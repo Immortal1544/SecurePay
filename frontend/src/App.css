@@ -582,6 +582,60 @@ h2 {
   margin-top: 10px;
 }
 
+.delivery-details-form {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 24px;
+}
+
+.delivery-details-form h2 {
+  color: white;
+  font-size: 18px;
+  margin: 0 0 5px;
+}
+
+.delivery-details-form label {
+  color: #e3f0eb;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.delivery-details-form input {
+  background: white;
+  border: 1px solid #bed1ca;
+  border-radius: 7px;
+  color: var(--ink);
+  font: inherit;
+  min-width: 0;
+  padding: 9px 10px;
+  width: 100%;
+}
+
+.delivery-details-form input:focus {
+  border-color: var(--coral);
+  outline: 2px solid rgb(222 119 97 / 25%);
+}
+
+.delivery-details-form small {
+  color: #c2ddd4;
+  font-size: 11px;
+  margin-top: -5px;
+}
+
+.delivery-field-grid {
+  display: grid;
+  gap: 9px 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.delivery-field-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
 .place-order-button {
   background: var(--coral);
   border: 0;
@@ -718,6 +772,26 @@ h2 {
 .order-meta strong {
   color: var(--ink);
   font-size: 15px;
+}
+
+.order-delivery-details {
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+  padding-bottom: 18px;
+}
+
+.order-delivery-details > strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.order-delivery-details > span:last-child {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .order-items {
@@ -1271,6 +1345,32 @@ h2 {
 .admin-order-item strong {
   color: var(--ink);
   flex-shrink: 0;
+}
+
+.admin-delivery-details {
+  border-top: 1px solid #edf0ed;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 14px 0 4px;
+}
+
+.admin-delivery-details h4 {
+  margin-bottom: 4px;
+}
+
+.admin-delivery-details > strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.admin-delivery-details > span,
+.admin-delivery-details > p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
 }
 
 .admin-order-details > p,

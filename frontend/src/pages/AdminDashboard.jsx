@@ -80,6 +80,11 @@ function formatStatus(status) {
   return status ? status.replaceAll('_', ' ') : 'Unknown'
 }
 
+function formatDeliveryAddress(order) {
+  const cityRegion = [order.city, order.state, order.postalCode].filter(Boolean).join(', ')
+  return [order.addressLine1, order.addressLine2, cityRegion, order.country].filter(Boolean).join(', ')
+}
+
 function AdminDashboard() {
   const [products, setProducts] = useState([])
   const [orders, setOrders] = useState([])
@@ -458,7 +463,15 @@ function AdminDashboard() {
                           <strong>{rupeeFormatter.format(Number(item.subtotal) || 0)}</strong>
                         </div>
                       )) : <p>No item details returned for this order.</p>}
-                      <p className="admin-customer-note">Customer details are not included in the current admin order response.</p>
+                      <div className="admin-delivery-details">
+                        <h4>Delivery details</h4>
+                        {displayedOrder.recipientName ? (
+                          <>
+                            <strong>{displayedOrder.recipientName} · {displayedOrder.phoneNumber}</strong>
+                            <span>{formatDeliveryAddress(displayedOrder)}</span>
+                          </>
+                        ) : <p>Delivery details are unavailable for this order.</p>}
+                      </div>
                       <div className="admin-order-controls">
                         <span className="admin-label">Payment</span>
                         {orderPayment ? (

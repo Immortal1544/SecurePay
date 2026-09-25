@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.securepay.dto.order.OrderItemResponse;
 import com.securepay.dto.order.OrderResponse;
+import com.securepay.dto.order.CreateOrderRequest;
 import com.securepay.entity.Cart;
 import com.securepay.entity.CartItem;
 import com.securepay.entity.Order;
@@ -54,7 +55,7 @@ public class OrderService {
 	}
 
 	@Transactional
-	public OrderResponse createOrder() {
+	public OrderResponse createOrder(CreateOrderRequest request) {
 		User user = getCurrentUser();
 		Cart cart = cartRepository.findByUserId(user.getId())
 				.orElseThrow(() -> new ResourceNotFoundException("Cart not found for current user"));
@@ -81,7 +82,18 @@ public class OrderService {
 			totalAmount = totalAmount.add(calculateSubtotal(product.getPrice(), requestedQuantity));
 		}
 
-		Order order = orderRepository.save(new Order(user, totalAmount, OrderStatus.CREATED));
+		Order order = orderRepository.save(new Order(
+				user,
+				totalAmount,
+				OrderStatus.CREATED,
+				normalize(request.getRecipientName()),
+				normalize(request.getPhoneNumber()),
+				normalize(request.getAddressLine1()),
+				normalizeOptional(request.getAddressLine2()),
+				normalize(request.getCity()),
+				normalize(request.getState()),
+				normalize(request.getPostalCode()),
+				normalize(request.getCountry())));
 		for (CartItem cartItem : cartItems) {
 			Product product = cartItem.getProduct();
 			int quantity = cartItem.getQuantity();
@@ -185,6 +197,14 @@ public class OrderService {
 		response.setTotalAmount(order.getTotalAmount());
 		response.setStatus(order.getStatus());
 		response.setCreatedAt(order.getCreatedAt());
+		response.setRecipientName(order.getRecipientName());
+		response.setPhoneNumber(order.getPhoneNumber());
+		response.setAddressLine1(order.getAddressLine1());
+		response.setAddressLine2(order.getAddressLine2());
+		response.setCity(order.getCity());
+		response.setState(order.getState());
+		response.setPostalCode(order.getPostalCode());
+		response.setCountry(order.getCountry());
 		response.setItems(orderItemRepository.findByOrderId(order.getId())
 				.stream()
 				.map(this::toOrderItemResponse)
@@ -205,5 +225,16 @@ public class OrderService {
 
 	private BigDecimal calculateSubtotal(BigDecimal unitPrice, int quantity) {
 		return unitPrice.multiply(BigDecimal.valueOf(quantity));
+	}
+
+	private String normalize(String value) {
+		return value.trim();
+	}
+
+	private String normalizeOptional(String value) {
+		if (value == null || value.isBlank()) {
+			return null;
+		}
+		return value.trim();
 	}
 }

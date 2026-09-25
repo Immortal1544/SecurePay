@@ -4,6 +4,16 @@ import { getToken } from '../services/authService'
 
 const CART_URL = 'http://localhost:8080/api/cart'
 const ORDERS_URL = 'http://localhost:8080/api/orders'
+const EMPTY_DELIVERY_DETAILS = {
+  recipientName: '',
+  phoneNumber: '',
+  addressLine1: '',
+  addressLine2: '',
+  city: '',
+  state: '',
+  postalCode: '',
+  country: '',
+}
 const rupeeFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
   currency: 'INR',
@@ -35,6 +45,7 @@ function Cart() {
   const [loadingAction, setLoadingAction] = useState('')
   const [error, setError] = useState('')
   const [createdOrder, setCreatedOrder] = useState(null)
+  const [deliveryDetails, setDeliveryDetails] = useState(EMPTY_DELIVERY_DETAILS)
 
   useEffect(() => {
     async function fetchCart() {
@@ -152,7 +163,13 @@ function Cart() {
     }
   }
 
-  async function placeOrder() {
+  function updateDeliveryDetails(event) {
+    const { name, value } = event.target
+    setDeliveryDetails((current) => ({ ...current, [name]: value }))
+  }
+
+  async function placeOrder(event) {
+    event.preventDefault()
     if (!cartItems.length || loadingAction) {
       return
     }
@@ -170,6 +187,9 @@ function Cart() {
       const response = await fetch(ORDERS_URL, {
         method: 'POST',
         headers: getAuthHeaders(token),
+        body: JSON.stringify(Object.fromEntries(
+          Object.entries(deliveryDetails).map(([key, value]) => [key, value.trim()]),
+        )),
       })
 
       if (!response.ok) {
@@ -204,6 +224,7 @@ function Cart() {
           <span>
             Order #{createdOrder.orderId} was created for {rupeeFormatter.format(Number(createdOrder.totalAmount) || 0)}.
           </span>
+          <span>Delivery for {createdOrder.recipientName} to {createdOrder.city}, {createdOrder.state} {createdOrder.postalCode}.</span>
           <Link className="view-order-link" to="/orders">View your order</Link>
         </div>
       )}
@@ -258,9 +279,44 @@ function Cart() {
           <aside className="cart-summary" aria-label="Cart summary">
             <span className="product-detail-label">Total amount</span>
             <strong>{rupeeFormatter.format(Number(cart.totalAmount) || 0)}</strong>
-            <button className="place-order-button" type="button" onClick={placeOrder} disabled={Boolean(loadingAction)}>
-              {loadingAction === 'place-order' ? 'Placing Order...' : 'Place Order'}
-            </button>
+            <form className="delivery-details-form" onSubmit={placeOrder}>
+              <h2>Delivery details</h2>
+              <label htmlFor="delivery-recipient">Recipient name</label>
+              <input id="delivery-recipient" name="recipientName" autoComplete="name" maxLength="120" required value={deliveryDetails.recipientName} onChange={updateDeliveryDetails} />
+
+              <label htmlFor="delivery-phone">Phone number</label>
+              <input id="delivery-phone" name="phoneNumber" type="tel" autoComplete="tel" inputMode="tel" pattern="\+?[1-9][0-9]{7,14}" title="Enter 8 to 15 digits, optionally starting with +" maxLength="16" required value={deliveryDetails.phoneNumber} onChange={updateDeliveryDetails} />
+              <small>Enter 8 to 15 digits, optionally starting with +.</small>
+
+              <label htmlFor="delivery-address-line-1">Address line 1</label>
+              <input id="delivery-address-line-1" name="addressLine1" autoComplete="address-line1" maxLength="255" required value={deliveryDetails.addressLine1} onChange={updateDeliveryDetails} />
+
+              <label htmlFor="delivery-address-line-2">Address line 2 (optional)</label>
+              <input id="delivery-address-line-2" name="addressLine2" autoComplete="address-line2" maxLength="255" value={deliveryDetails.addressLine2} onChange={updateDeliveryDetails} />
+
+              <div className="delivery-field-grid">
+                <div>
+                  <label htmlFor="delivery-city">City</label>
+                  <input id="delivery-city" name="city" autoComplete="address-level2" maxLength="100" required value={deliveryDetails.city} onChange={updateDeliveryDetails} />
+                </div>
+                <div>
+                  <label htmlFor="delivery-state">State / region</label>
+                  <input id="delivery-state" name="state" autoComplete="address-level1" maxLength="100" required value={deliveryDetails.state} onChange={updateDeliveryDetails} />
+                </div>
+                <div>
+                  <label htmlFor="delivery-postal-code">Postal code</label>
+                  <input id="delivery-postal-code" name="postalCode" autoComplete="postal-code" pattern="[A-Za-z0-9][A-Za-z0-9 -]{1,10}[A-Za-z0-9]" title="Enter 3 to 12 letters, digits, spaces, or hyphens" maxLength="12" required value={deliveryDetails.postalCode} onChange={updateDeliveryDetails} />
+                </div>
+                <div>
+                  <label htmlFor="delivery-country">Country</label>
+                  <input id="delivery-country" name="country" autoComplete="country-name" maxLength="100" required value={deliveryDetails.country} onChange={updateDeliveryDetails} />
+                </div>
+              </div>
+
+              <button className="place-order-button" type="submit" disabled={Boolean(loadingAction)}>
+                {loadingAction === 'place-order' ? 'Placing Order...' : 'Place Order'}
+              </button>
+            </form>
             <button className="clear-cart-button" type="button" onClick={clearCart} disabled={Boolean(loadingAction)}>
               {loadingAction === 'clear' ? 'Clearing...' : 'Clear Cart'}
             </button>

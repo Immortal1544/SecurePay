@@ -19,5 +19,13 @@ public class OrderResponse {
 	private BigDecimal totalAmount;
 	private OrderStatus status;
 	private LocalDateTime createdAt;
+	private String recipientName;
+	private String phoneNumber;
+	private String addressLine1;
+	private String addressLine2;
+	private String city;
+	private String state;
+	private String postalCode;
+	private String country;
 	private List<OrderItemResponse> items;
 }

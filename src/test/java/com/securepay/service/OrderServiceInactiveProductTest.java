@@ -25,6 +25,7 @@ import com.securepay.entity.Order;
 import com.securepay.entity.Product;
 import com.securepay.entity.Role;
 import com.securepay.entity.User;
+import com.securepay.dto.order.CreateOrderRequest;
 import com.securepay.exception.InactiveProductException;
 import com.securepay.repository.CartItemRepository;
 import com.securepay.repository.CartRepository;
@@ -78,7 +79,7 @@ class OrderServiceInactiveProductTest {
 		CartItem item = new CartItem(cart, product, 3);
 		when(cartItemRepository.findByCartId(2L)).thenReturn(List.of(item));
 
-		var response = orderService.createOrder();
+		var response = orderService.createOrder(validRequest());
 
 		assertEquals(new BigDecimal("30"), response.getTotalAmount());
 		assertEquals(5, product.getStockQuantity());
@@ -96,7 +97,7 @@ class OrderServiceInactiveProductTest {
 		List<CartItem> items = List.of(activeItem, inactiveItem);
 		when(cartItemRepository.findByCartId(2L)).thenReturn(items);
 
-		assertThrows(InactiveProductException.class, orderService::createOrder);
+		assertThrows(InactiveProductException.class, () -> orderService.createOrder(validRequest()));
 
 		assertEquals(8, activeProduct.getStockQuantity());
 		assertEquals(8, inactiveProduct.getStockQuantity());
@@ -106,9 +107,37 @@ class OrderServiceInactiveProductTest {
 		verify(cartItemRepository, never()).deleteAll(items);
 	}
 
+	@Test
+	void insufficientStockRejectsOrderBeforePersistenceOrCartClearing() {
+		Product product = product(12L, true, 1);
+		CartItem item = new CartItem(cart, product, 3);
+		when(cartItemRepository.findByCartId(2L)).thenReturn(List.of(item));
+
+		assertThrows(IllegalStateException.class,
+				() -> orderService.createOrder(validRequest()));
+
+		assertEquals(1, product.getStockQuantity());
+		verify(orderRepository, never()).save(any(Order.class));
+		verify(orderItemRepository, never()).save(any());
+		verify(productRepository, never()).save(any(Product.class));
+		verify(cartItemRepository, never()).deleteAll(List.of(item));
+	}
+
 	private Product product(Long id, boolean active, int stock) {
 		Product product = new Product("Test product " + id, "Description", BigDecimal.TEN, stock, active);
 		product.setId(id);
 		return product;
+	}
+
+	private CreateOrderRequest validRequest() {
+		CreateOrderRequest request = new CreateOrderRequest();
+		request.setRecipientName("Test Recipient");
+		request.setPhoneNumber("+919876543210");
+		request.setAddressLine1("12 SecurePay Street");
+		request.setCity("Bengaluru");
+		request.setState("Karnataka");
+		request.setPostalCode("560001");
+		request.setCountry("India");
+		return request;
 	}
 }

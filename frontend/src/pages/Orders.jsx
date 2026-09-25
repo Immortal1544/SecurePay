@@ -27,6 +27,11 @@ function formatStatus(status) {
   return status ? status.replaceAll('_', ' ') : 'Unknown'
 }
 
+function formatDeliveryAddress(order) {
+  const cityRegion = [order.city, order.state, order.postalCode].filter(Boolean).join(', ')
+  return [order.addressLine1, order.addressLine2, cityRegion, order.country].filter(Boolean).join(', ')
+}
+
 async function requestJson(url, options) {
   const response = await fetch(url, options)
   let responseData = null
@@ -299,6 +304,16 @@ function Orders() {
                     <span className="product-detail-label">Total</span>
                     <strong>{rupeeFormatter.format(Number(displayedOrder.totalAmount) || 0)}</strong>
                   </div>
+                </div>
+
+                <div className="order-delivery-details">
+                  <span className="product-detail-label">Delivery details</span>
+                  {displayedOrder.recipientName ? (
+                    <>
+                      <strong>{displayedOrder.recipientName} · {displayedOrder.phoneNumber}</strong>
+                      <span>{formatDeliveryAddress(displayedOrder)}</span>
+                    </>
+                  ) : <span>Delivery details are unavailable for this order.</span>}
                 </div>
 
                 <div className="order-items">
