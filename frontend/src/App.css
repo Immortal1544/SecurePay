@@ -1447,6 +1447,13 @@ h2 {
     width: 100%;
   }
 
+  .nav-button {
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
   .admin-page {
     padding: 48px 20px 72px;
   }
