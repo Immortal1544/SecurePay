@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { getToken } from '../services/authService'
+import { API_BASE_URL } from '../services/apiConfig'
 
-const PRODUCTS_URL = 'http://localhost:8080/api/products'
-const CART_ITEMS_URL = 'http://localhost:8080/api/cart/items'
+const PRODUCTS_URL = `${API_BASE_URL}/api/products`
+const CART_ITEMS_URL = `${API_BASE_URL}/api/cart/items`
 const rupeeFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',
   currency: 'INR',

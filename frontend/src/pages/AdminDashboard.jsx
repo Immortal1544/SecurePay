@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getToken } from '../services/authService'
+import { API_BASE_URL } from '../services/apiConfig'
 
-const API_BASE_URL = 'http://localhost:8080'
 const PRODUCT_URL = `${API_BASE_URL}/api/products`
 const ADMIN_ORDER_URL = `${API_BASE_URL}/api/admin/orders`
 const ADMIN_PAYMENT_URL = `${API_BASE_URL}/api/payments/admin/orders`

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { getToken } from '../services/authService'
+import { API_BASE_URL } from '../services/apiConfig'
 
-const ORDERS_URL = 'http://localhost:8080/api/orders'
-const PAYMENTS_URL = 'http://localhost:8080/api/payments'
+const ORDERS_URL = `${API_BASE_URL}/api/orders`
+const PAYMENTS_URL = `${API_BASE_URL}/api/payments`
 const RAZORPAY_SCRIPT_URL = 'https://checkout.razorpay.com/v1/checkout.js'
 const rupeeFormatter = new Intl.NumberFormat('en-IN', {
   style: 'currency',

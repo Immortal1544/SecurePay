@@ -1,4 +1,5 @@
-const API_BASE_URL = 'http://localhost:8080'
+import { API_BASE_URL } from './apiConfig'
+
 const TOKEN_KEY = 'securepay_token'
 const USER_KEY = 'securepay_user'
 

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getToken } from '../services/authService'
+import { API_BASE_URL } from '../services/apiConfig'
 
-const CART_URL = 'http://localhost:8080/api/cart'
-const ORDERS_URL = 'http://localhost:8080/api/orders'
+const CART_URL = `${API_BASE_URL}/api/cart`
+const ORDERS_URL = `${API_BASE_URL}/api/orders`
 const EMPTY_DELIVERY_DETAILS = {
   recipientName: '',
   phoneNumber: '',
