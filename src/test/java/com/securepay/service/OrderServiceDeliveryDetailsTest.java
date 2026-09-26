@@ -52,8 +52,10 @@ class OrderServiceDeliveryDetailsTest {
 		productRepository = mock(ProductRepository.class);
 		orderRepository = mock(OrderRepository.class);
 		orderItemRepository = mock(OrderItemRepository.class);
-		orderService = new OrderService(userRepository, productRepository, cartRepository,
-				cartItemRepository, orderRepository, orderItemRepository);
+		InventoryReservationService inventoryReservationService = new InventoryReservationService(
+				productRepository, orderItemRepository);
+		orderService = new OrderService(userRepository, cartRepository,
+				cartItemRepository, orderRepository, orderItemRepository, inventoryReservationService);
 
 		user = new User("Original Name", "customer@example.com", "password", Role.USER);
 		user.setId(7L);
@@ -65,6 +67,7 @@ class OrderServiceDeliveryDetailsTest {
 		when(cartRepository.findByUserId(7L)).thenReturn(Optional.of(cart));
 		Product product = new Product("Snapshot Product", "Description", new BigDecimal("12.50"), 5, true);
 		product.setId(9L);
+		when(productRepository.findByIdForUpdate(9L)).thenReturn(Optional.of(product));
 		when(cartItemRepository.findByCartId(8L)).thenReturn(List.of(new CartItem(cart, product, 2)));
 		when(orderItemRepository.findByOrderId(anyLong())).thenReturn(List.of());
 		when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
@@ -86,6 +89,7 @@ class OrderServiceDeliveryDetailsTest {
 		var created = orderService.createOrder(request);
 
 		assertEquals("Asha Recipient", savedOrder.getRecipientName());
+		assertEquals(true, savedOrder.getInventoryReserved());
 		assertEquals("+919876543210", savedOrder.getPhoneNumber());
 		assertEquals("12 SecurePay Street", savedOrder.getAddressLine1());
 		assertEquals("Apartment 4B", savedOrder.getAddressLine2());

@@ -46,6 +46,7 @@ public class PaymentService {
 	private final UserRepository userRepository;
 	private final OrderRepository orderRepository;
 	private final PaymentRepository paymentRepository;
+	private final InventoryReservationService inventoryReservationService;
 	private final RazorpayClient razorpayClient;
 	private final String razorpayKeyId;
 	private final String razorpayKeySecret;
@@ -55,6 +56,7 @@ public class PaymentService {
 			UserRepository userRepository,
 			OrderRepository orderRepository,
 			PaymentRepository paymentRepository,
+			InventoryReservationService inventoryReservationService,
 			RazorpayClient razorpayClient,
 			@Value("${razorpay.key.id}") String razorpayKeyId,
 			@Value("${razorpay.key.secret}") String razorpayKeySecret,
@@ -62,6 +64,7 @@ public class PaymentService {
 		this.userRepository = userRepository;
 		this.orderRepository = orderRepository;
 		this.paymentRepository = paymentRepository;
+		this.inventoryReservationService = inventoryReservationService;
 		this.razorpayClient = razorpayClient;
 		this.razorpayKeyId = razorpayKeyId;
 		this.razorpayKeySecret = razorpayKeySecret;
@@ -97,7 +100,7 @@ public class PaymentService {
 	@Transactional
 	public CreatePaymentResponse createPayment(Long orderId) {
 		User user = getCurrentUser();
-		Order order = orderRepository.findByIdAndUserId(orderId, user.getId())
+		Order order = orderRepository.findByIdAndUserIdForUpdate(orderId, user.getId())
 				.orElseThrow(() -> new ResourceNotFoundException(
 						"Order not found with id: " + orderId));
 		ensurePaymentAllowed(order);
@@ -138,12 +141,17 @@ public class PaymentService {
 		Payment payment = paymentRepository.findByOrderIdForUpdate(orderId)
 				.orElseThrow(() -> new ResourceNotFoundException(
 						"Payment not found for order with id: " + orderId));
+		Order order = orderRepository.findByIdForUpdate(payment.getOrder().getId())
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Order not found with id: " + payment.getOrder().getId()));
 
 		if (payment.getStatus() == PaymentStatus.REFUNDED) {
-			Order refundedOrder = payment.getOrder();
-			if (refundedOrder.getStatus() != OrderStatus.CANCELLED) {
-				refundedOrder.setStatus(OrderStatus.CANCELLED);
-				orderRepository.save(refundedOrder);
+			if (order.getStatus() != OrderStatus.CANCELLED) {
+				if (order.getStatus() == OrderStatus.PAID) {
+					inventoryReservationService.releaseReservedInventory(order);
+				}
+				order.setStatus(OrderStatus.CANCELLED);
+				orderRepository.save(order);
 			}
 			return toPaymentResponse(payment);
 		}
@@ -154,7 +162,6 @@ public class PaymentService {
 			throw new InvalidPaymentStateException();
 		}
 
-		Order order = payment.getOrder();
 		if (order.getStatus() != OrderStatus.PAID
 				&& order.getStatus() != OrderStatus.PROCESSING
 				&& order.getStatus() != OrderStatus.CANCELLED) {
@@ -182,6 +189,9 @@ public class PaymentService {
 		payment.setStatus(PaymentStatus.REFUNDED);
 		paymentRepository.save(payment);
 		if (order.getStatus() != OrderStatus.CANCELLED) {
+			if (order.getStatus() == OrderStatus.PAID) {
+				inventoryReservationService.releaseReservedInventory(order);
+			}
 			order.setStatus(OrderStatus.CANCELLED);
 			orderRepository.save(order);
 		}
@@ -209,6 +219,8 @@ public class PaymentService {
 		Payment payment = paymentRepository.findByOrderIdForUpdate(orderId)
 				.orElseThrow(() -> new ResourceNotFoundException(
 						"Payment not found for order with id: " + orderId));
+		order = orderRepository.findByIdForUpdate(orderId)
+				.orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
 
 		if (!java.util.Objects.equals(request.getRazorpayOrderId(), payment.getRazorpayOrderId())) {
 			throw new InvalidPaymentException("Payment verification failed");
@@ -239,9 +251,10 @@ public class PaymentService {
 		payment.setRazorpayPaymentId(request.getRazorpayPaymentId());
 		payment.setStatus(PaymentStatus.SUCCESS);
 		paymentRepository.save(payment);
-
-		order.setStatus(OrderStatus.PAID);
-		orderRepository.save(order);
+		if (order.getStatus() == OrderStatus.CREATED || order.getStatus() == OrderStatus.PAYMENT_PENDING) {
+			order.setStatus(OrderStatus.PAID);
+			orderRepository.save(order);
+		}
 
 		return toPaymentResponse(payment);
 	}
@@ -249,7 +262,7 @@ public class PaymentService {
 	@Transactional
 	public RazorpayOrderResponse createRazorpayOrder(Long orderId) {
 		User user = getCurrentUser();
-		Order order = orderRepository.findByIdAndUserId(orderId, user.getId())
+		Order order = orderRepository.findByIdAndUserIdForUpdate(orderId, user.getId())
 				.orElseThrow(() -> new ResourceNotFoundException(
 						"Order not found with id: " + orderId));
 		ensurePaymentAllowed(order);
@@ -311,14 +324,19 @@ public class PaymentService {
 			}
 			return;
 		}
+		Order order = orderRepository.findByIdForUpdate(payment.getOrder().getId())
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Order not found with id: " + payment.getOrder().getId()));
 
 		if (razorpayPaymentId != null) {
 			payment.setRazorpayPaymentId(razorpayPaymentId);
 		}
 		payment.setStatus(PaymentStatus.SUCCESS);
-		payment.getOrder().setStatus(OrderStatus.PAID);
 		paymentRepository.save(payment);
-		orderRepository.save(payment.getOrder());
+		if (order.getStatus() == OrderStatus.CREATED || order.getStatus() == OrderStatus.PAYMENT_PENDING) {
+			order.setStatus(OrderStatus.PAID);
+			orderRepository.save(order);
+		}
 	}
 
 	private void processFailedPayment(JSONObject webhook) {
@@ -346,13 +364,15 @@ public class PaymentService {
 		if (payment.getStatus() == PaymentStatus.REFUNDED) {
 			return;
 		}
+		Order order = orderRepository.findByIdForUpdate(payment.getOrder().getId())
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Order not found with id: " + payment.getOrder().getId()));
 
 		if (payment.getStatus() != PaymentStatus.SUCCESS) {
 			payment.setStatus(PaymentStatus.SUCCESS);
 			paymentRepository.save(payment);
 		}
 
-		Order order = payment.getOrder();
 		if (order.getStatus() == OrderStatus.CREATED
 				|| order.getStatus() == OrderStatus.PAYMENT_PENDING) {
 			order.setStatus(OrderStatus.PAID);

@@ -52,6 +52,7 @@ class PaymentServiceLifecycleTest {
 	private UserRepository userRepository;
 	private OrderRepository orderRepository;
 	private PaymentRepository paymentRepository;
+	private InventoryReservationService inventoryReservationService;
 	private PaymentService paymentService;
 	private User user;
 
@@ -60,10 +61,12 @@ class PaymentServiceLifecycleTest {
 		userRepository = mock(UserRepository.class);
 		orderRepository = mock(OrderRepository.class);
 		paymentRepository = mock(PaymentRepository.class);
+		inventoryReservationService = mock(InventoryReservationService.class);
 		paymentService = new PaymentService(
 				userRepository,
 				orderRepository,
 				paymentRepository,
+				inventoryReservationService,
 				(RazorpayClient) null,
 				"test-key-id",
 				KEY_SECRET,
@@ -83,7 +86,7 @@ class PaymentServiceLifecycleTest {
 	@Test
 	void paymentCreationIsAllowedForCreatedOrder() {
 		Order order = order(OrderStatus.CREATED);
-		when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdAndUserIdForUpdate(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
 		when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.empty());
 		when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -97,7 +100,7 @@ class PaymentServiceLifecycleTest {
 	void existingPaymentCanBeReusedForPaymentPendingOrder() {
 		Order order = order(OrderStatus.PAYMENT_PENDING);
 		Payment payment = payment(order, PaymentStatus.PENDING);
-		when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdAndUserIdForUpdate(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
 		when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
 
 		var response = paymentService.createPayment(ORDER_ID);
@@ -111,7 +114,7 @@ class PaymentServiceLifecycleTest {
 		for (OrderStatus status : List.of(OrderStatus.CREATED, OrderStatus.PAYMENT_PENDING)) {
 			Order order = order(status);
 			Payment payment = payment(order, PaymentStatus.PENDING);
-			when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+			when(orderRepository.findByIdAndUserIdForUpdate(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
 			when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
 
 			var response = paymentService.createRazorpayOrder(ORDER_ID);
@@ -134,7 +137,7 @@ class PaymentServiceLifecycleTest {
 			SecurityContextHolder.getContext().setAuthentication(
 					new UsernamePasswordAuthenticationToken(EMAIL, "", List.of()));
 			Order order = order(status);
-			when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+			when(orderRepository.findByIdAndUserIdForUpdate(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
 
 			assertThrows(InvalidPaymentStateException.class,
 					() -> paymentService.createPayment(ORDER_ID), status.name());
@@ -151,6 +154,7 @@ class PaymentServiceLifecycleTest {
 		Payment payment = payment(order, PaymentStatus.PENDING);
 		when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
 		when(paymentRepository.findByOrderIdForUpdate(ORDER_ID)).thenReturn(Optional.of(payment));
+		when(orderRepository.findByIdForUpdate(ORDER_ID)).thenReturn(Optional.of(order));
 		VerifyPaymentRequest request = request(RAZORPAY_ORDER_ID, RAZORPAY_PAYMENT_ID,
 				signature(RAZORPAY_ORDER_ID, RAZORPAY_PAYMENT_ID));
 
@@ -172,6 +176,7 @@ class PaymentServiceLifecycleTest {
 		payment.setUpdatedAt(previousUpdatedAt);
 		when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
 		when(paymentRepository.findByOrderIdForUpdate(ORDER_ID)).thenReturn(Optional.of(payment));
+		when(orderRepository.findByIdForUpdate(ORDER_ID)).thenReturn(Optional.of(order));
 		String repeatedPaymentId = "pay_other_valid";
 
 		var response = paymentService.verifyPayment(ORDER_ID, request(
@@ -193,6 +198,7 @@ class PaymentServiceLifecycleTest {
 		Payment payment = payment(order, PaymentStatus.PENDING);
 		when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
 		when(paymentRepository.findByOrderIdForUpdate(ORDER_ID)).thenReturn(Optional.of(payment));
+		when(orderRepository.findByIdForUpdate(ORDER_ID)).thenReturn(Optional.of(order));
 
 		assertThrows(InvalidPaymentException.class,
 				() -> paymentService.verifyPayment(ORDER_ID,
@@ -207,6 +213,7 @@ class PaymentServiceLifecycleTest {
 		Payment payment = payment(order, PaymentStatus.PENDING);
 		when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
 		when(paymentRepository.findByOrderIdForUpdate(ORDER_ID)).thenReturn(Optional.of(payment));
+		when(orderRepository.findByIdForUpdate(ORDER_ID)).thenReturn(Optional.of(order));
 
 		assertThrows(InvalidPaymentException.class,
 				() -> paymentService.verifyPayment(ORDER_ID,
@@ -231,12 +238,35 @@ class PaymentServiceLifecycleTest {
 		Payment payment = payment(order, PaymentStatus.SUCCESS);
 		when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
 		when(paymentRepository.findByOrderIdForUpdate(ORDER_ID)).thenReturn(Optional.of(payment));
+		when(orderRepository.findByIdForUpdate(ORDER_ID)).thenReturn(Optional.of(order));
 
 		assertThrows(InvalidPaymentException.class,
 				() -> paymentService.verifyPayment(ORDER_ID,
 						request(RAZORPAY_ORDER_ID, RAZORPAY_PAYMENT_ID, "invalid-signature")));
 		verify(paymentRepository, never()).save(any(Payment.class));
 		verify(orderRepository, never()).save(any(Order.class));
+	}
+
+	@Test
+	void validLateVerificationDoesNotResurrectCancelledOrderOrItsReleasedReservation() throws Exception {
+		Order order = order(OrderStatus.CANCELLED);
+		order.setInventoryReserved(false);
+		Payment payment = payment(order, PaymentStatus.PENDING);
+		when(orderRepository.findByIdAndUserId(ORDER_ID, USER_ID)).thenReturn(Optional.of(order));
+		when(paymentRepository.findByOrderIdForUpdate(ORDER_ID)).thenReturn(Optional.of(payment));
+		when(orderRepository.findByIdForUpdate(ORDER_ID)).thenReturn(Optional.of(order));
+
+		var response = paymentService.verifyPayment(ORDER_ID, request(
+				RAZORPAY_ORDER_ID,
+				RAZORPAY_PAYMENT_ID,
+				signature(RAZORPAY_ORDER_ID, RAZORPAY_PAYMENT_ID)));
+
+		assertEquals(PaymentStatus.SUCCESS, response.getStatus());
+		assertEquals(OrderStatus.CANCELLED, order.getStatus());
+		assertEquals(false, order.getInventoryReserved());
+		verify(paymentRepository).save(payment);
+		verify(orderRepository, never()).save(order);
+		verifyNoInteractions(inventoryReservationService);
 	}
 
 	private Order order(OrderStatus status) {

@@ -49,6 +49,13 @@ public class Order {
 	@ToString.Include
 	private OrderStatus status;
 
+	/**
+	 * Null is treated as reserved for orders created before this column existed;
+	 * the previous order creation flow already deducted their inventory.
+	 */
+	@Column(name = "inventory_reserved")
+	private Boolean inventoryReserved = true;
+
 	@Column(length = 120)
 	private String recipientName;
 

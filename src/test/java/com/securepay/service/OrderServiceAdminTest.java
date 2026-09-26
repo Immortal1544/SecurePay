@@ -49,8 +49,9 @@ class OrderServiceAdminTest {
 		cartItemRepository = mock(CartItemRepository.class);
 		orderRepository = mock(OrderRepository.class);
 		orderItemRepository = mock(OrderItemRepository.class);
-		orderService = new OrderService(userRepository, productRepository, cartRepository,
-				cartItemRepository, orderRepository, orderItemRepository);
+		orderService = new OrderService(userRepository, cartRepository,
+				cartItemRepository, orderRepository, orderItemRepository,
+				mock(InventoryReservationService.class));
 		when(orderItemRepository.findByOrderId(anyLong())).thenReturn(List.of());
 	}
 

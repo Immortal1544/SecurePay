@@ -22,6 +22,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import com.securepay.entity.Cart;
 import com.securepay.entity.CartItem;
 import com.securepay.entity.Order;
+import com.securepay.entity.OrderItem;
+import com.securepay.entity.OrderStatus;
 import com.securepay.entity.Product;
 import com.securepay.entity.Role;
 import com.securepay.entity.User;
@@ -54,8 +56,10 @@ class OrderServiceInactiveProductTest {
 		cartItemRepository = mock(CartItemRepository.class);
 		orderRepository = mock(OrderRepository.class);
 		orderItemRepository = mock(OrderItemRepository.class);
-		orderService = new OrderService(userRepository, productRepository, cartRepository,
-				cartItemRepository, orderRepository, orderItemRepository);
+		InventoryReservationService inventoryReservationService = new InventoryReservationService(
+				productRepository, orderItemRepository);
+		orderService = new OrderService(userRepository, cartRepository,
+				cartItemRepository, orderRepository, orderItemRepository, inventoryReservationService);
 		user = new User("Test User", "user@example.com", "password", Role.USER);
 		user.setId(1L);
 		cart = new Cart(user);
@@ -76,6 +80,7 @@ class OrderServiceInactiveProductTest {
 	@Test
 	void createsOrderAndReducesStockForActiveProducts() {
 		Product product = product(10L, true, 8);
+		when(productRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(product));
 		CartItem item = new CartItem(cart, product, 3);
 		when(cartItemRepository.findByCartId(2L)).thenReturn(List.of(item));
 
@@ -92,6 +97,8 @@ class OrderServiceInactiveProductTest {
 	void inactiveProductRejectsOrderBeforePersistenceStockChangesOrCartClearing() {
 		Product activeProduct = product(10L, true, 8);
 		Product inactiveProduct = product(11L, false, 8);
+		when(productRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(activeProduct));
+		when(productRepository.findByIdForUpdate(11L)).thenReturn(Optional.of(inactiveProduct));
 		CartItem activeItem = new CartItem(cart, activeProduct, 3);
 		CartItem inactiveItem = new CartItem(cart, inactiveProduct, 2);
 		List<CartItem> items = List.of(activeItem, inactiveItem);
@@ -110,10 +117,11 @@ class OrderServiceInactiveProductTest {
 	@Test
 	void insufficientStockRejectsOrderBeforePersistenceOrCartClearing() {
 		Product product = product(12L, true, 1);
+		when(productRepository.findByIdForUpdate(12L)).thenReturn(Optional.of(product));
 		CartItem item = new CartItem(cart, product, 3);
 		when(cartItemRepository.findByCartId(2L)).thenReturn(List.of(item));
 
-		assertThrows(IllegalStateException.class,
+		assertThrows(com.securepay.exception.OrderConflictException.class,
 				() -> orderService.createOrder(validRequest()));
 
 		assertEquals(1, product.getStockQuantity());
@@ -121,6 +129,32 @@ class OrderServiceInactiveProductTest {
 		verify(orderItemRepository, never()).save(any());
 		verify(productRepository, never()).save(any(Product.class));
 		verify(cartItemRepository, never()).deleteAll(List.of(item));
+	}
+
+	@Test
+	void cancellingPendingOrderReleasesReservedStockExactlyOnce() {
+		Product product = product(13L, true, 4);
+		Order order = new Order(user, BigDecimal.valueOf(20), OrderStatus.PAYMENT_PENDING);
+		order.setId(50L);
+		OrderItem orderItem = new OrderItem(order, product, product.getName(), product.getPrice(), 2,
+				BigDecimal.valueOf(20));
+		when(orderRepository.findByIdForUpdate(50L)).thenReturn(Optional.of(order));
+		when(orderItemRepository.findByOrderId(50L)).thenReturn(List.of(orderItem));
+		when(productRepository.findByIdForUpdate(13L)).thenReturn(Optional.of(product));
+		when(orderRepository.save(order)).thenReturn(order);
+
+		var response = orderService.updateOrderStatus(50L, OrderStatus.CANCELLED);
+
+		assertEquals(OrderStatus.CANCELLED, response.getStatus());
+		assertEquals(6, product.getStockQuantity());
+		assertEquals(false, order.getInventoryReserved());
+		verify(productRepository).save(product);
+		verify(orderRepository).save(order);
+
+		assertThrows(com.securepay.exception.InvalidOrderStatusTransitionException.class,
+				() -> orderService.updateOrderStatus(50L, OrderStatus.CANCELLED));
+		assertEquals(6, product.getStockQuantity());
+		verify(productRepository).save(product);
 	}
 
 	private Product product(Long id, boolean active, int stock) {

@@ -2,6 +2,7 @@ package com.securepay.service;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -19,39 +20,38 @@ import com.securepay.entity.OrderItem;
 import com.securepay.entity.OrderStatus;
 import com.securepay.entity.Product;
 import com.securepay.entity.User;
-import com.securepay.exception.InactiveProductException;
 import com.securepay.exception.InvalidOrderStatusTransitionException;
+import com.securepay.exception.OrderConflictException;
 import com.securepay.exception.ResourceNotFoundException;
 import com.securepay.repository.CartItemRepository;
 import com.securepay.repository.CartRepository;
 import com.securepay.repository.OrderItemRepository;
 import com.securepay.repository.OrderRepository;
-import com.securepay.repository.ProductRepository;
 import com.securepay.repository.UserRepository;
 
 @Service
 public class OrderService {
 
 	private final UserRepository userRepository;
-	private final ProductRepository productRepository;
 	private final CartRepository cartRepository;
 	private final CartItemRepository cartItemRepository;
 	private final OrderRepository orderRepository;
 	private final OrderItemRepository orderItemRepository;
+	private final InventoryReservationService inventoryReservationService;
 
 	public OrderService(
 			UserRepository userRepository,
-			ProductRepository productRepository,
 			CartRepository cartRepository,
 			CartItemRepository cartItemRepository,
 			OrderRepository orderRepository,
-			OrderItemRepository orderItemRepository) {
+			OrderItemRepository orderItemRepository,
+			InventoryReservationService inventoryReservationService) {
 		this.userRepository = userRepository;
-		this.productRepository = productRepository;
 		this.cartRepository = cartRepository;
 		this.cartItemRepository = cartItemRepository;
 		this.orderRepository = orderRepository;
 		this.orderItemRepository = orderItemRepository;
+		this.inventoryReservationService = inventoryReservationService;
 	}
 
 	@Transactional
@@ -62,24 +62,14 @@ public class OrderService {
 		List<CartItem> cartItems = cartItemRepository.findByCartId(cart.getId());
 
 		if (cartItems.isEmpty()) {
-			throw new IllegalStateException("Cannot create order from an empty cart");
+			throw new OrderConflictException("Cannot create order from an empty cart");
 		}
 
+		Map<Long, Product> reservedProducts = inventoryReservationService.reserveCartItems(cartItems);
 		BigDecimal totalAmount = BigDecimal.ZERO;
 		for (CartItem cartItem : cartItems) {
-			Product product = cartItem.getProduct();
-			if (!Boolean.TRUE.equals(product.getActive())) {
-				throw new InactiveProductException();
-			}
-
-			int requestedQuantity = cartItem.getQuantity();
-			int availableQuantity = product.getStockQuantity();
-			if (availableQuantity < requestedQuantity) {
-				throw new IllegalStateException("Insufficient stock for product " + product.getName()
-						+ ": available=" + availableQuantity + ", requested=" + requestedQuantity);
-			}
-
-			totalAmount = totalAmount.add(calculateSubtotal(product.getPrice(), requestedQuantity));
+			Product product = reservedProducts.get(cartItem.getProduct().getId());
+			totalAmount = totalAmount.add(calculateSubtotal(product.getPrice(), cartItem.getQuantity()));
 		}
 
 		Order order = orderRepository.save(new Order(
@@ -95,7 +85,7 @@ public class OrderService {
 				normalize(request.getPostalCode()),
 				normalize(request.getCountry())));
 		for (CartItem cartItem : cartItems) {
-			Product product = cartItem.getProduct();
+			Product product = reservedProducts.get(cartItem.getProduct().getId());
 			int quantity = cartItem.getQuantity();
 			BigDecimal subtotal = calculateSubtotal(product.getPrice(), quantity);
 
@@ -107,8 +97,6 @@ public class OrderService {
 					quantity,
 					subtotal));
 
-			product.setStockQuantity(product.getStockQuantity() - quantity);
-			productRepository.save(product);
 		}
 
 		cartItemRepository.deleteAll(cartItems);
@@ -152,13 +140,16 @@ public class OrderService {
 
 	@Transactional
 	public OrderResponse updateOrderStatus(Long orderId, OrderStatus newStatus) {
-		Order order = orderRepository.findById(orderId)
+		Order order = orderRepository.findByIdForUpdate(orderId)
 				.orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
 
 		if (!isAllowedStatusTransition(order.getStatus(), newStatus)) {
 			throw new InvalidOrderStatusTransitionException();
 		}
 
+		if (newStatus == OrderStatus.CANCELLED && order.getStatus() != OrderStatus.PROCESSING) {
+			inventoryReservationService.releaseReservedInventory(order);
+		}
 		order.setStatus(newStatus);
 		return toOrderResponse(orderRepository.save(order));
 	}

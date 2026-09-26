@@ -3,6 +3,7 @@ package com.securepay.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -42,17 +43,20 @@ class PaymentServiceWebhookTest {
 	private static final String RAZORPAY_PAYMENT_ID = "pay_test_123";
 
 	private PaymentRepository paymentRepository;
+	private InventoryReservationService inventoryReservationService;
 	private OrderRepository orderRepository;
 	private PaymentService paymentService;
 
 	@BeforeEach
 	void setUp() {
 		paymentRepository = mock(PaymentRepository.class);
+		inventoryReservationService = mock(InventoryReservationService.class);
 		orderRepository = mock(OrderRepository.class);
 		paymentService = new PaymentService(
 				null,
 				orderRepository,
 				paymentRepository,
+				inventoryReservationService,
 				(RazorpayClient) null,
 				"test-key-id",
 				"test-key-secret",
@@ -65,6 +69,7 @@ class PaymentServiceWebhookTest {
 		Payment payment = payment(order, PaymentStatus.PENDING);
 		when(paymentRepository.findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID))
 				.thenReturn(Optional.of(payment));
+		when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
 
 		String payload = capturedPayload();
 		paymentService.processRazorpayWebhook(payload, sign(payload));
@@ -152,8 +157,10 @@ class PaymentServiceWebhookTest {
 
 		assertEquals(PaymentStatus.FAILED, payment.getStatus());
 		assertEquals(OrderStatus.PAYMENT_PENDING, order.getStatus());
+		assertTrue(order.getInventoryReserved());
 		verify(paymentRepository).save(payment);
 		verify(orderRepository, never()).save(order);
+		verifyNoInteractions(inventoryReservationService);
 	}
 
 	@Test
@@ -171,6 +178,25 @@ class PaymentServiceWebhookTest {
 		assertEquals(PaymentStatus.FAILED, payment.getStatus());
 		verify(paymentRepository, times(1)).save(payment);
 		verify(orderRepository, never()).save(any(Order.class));
+		verifyNoInteractions(inventoryReservationService);
+	}
+
+	@Test
+	void lateCapturedEventDoesNotResurrectCancelledOrderOrReleasedInventory() throws Exception {
+		Order order = order(OrderStatus.CANCELLED);
+		order.setInventoryReserved(false);
+		Payment payment = payment(order, PaymentStatus.PENDING);
+		when(paymentRepository.findByRazorpayOrderIdForUpdate(RAZORPAY_ORDER_ID))
+				.thenReturn(Optional.of(payment));
+
+		String payload = capturedPayload();
+		paymentService.processRazorpayWebhook(payload, sign(payload));
+
+		assertEquals(PaymentStatus.SUCCESS, payment.getStatus());
+		assertEquals(OrderStatus.CANCELLED, order.getStatus());
+		assertEquals(false, order.getInventoryReserved());
+		verify(orderRepository, never()).save(order);
+		verifyNoInteractions(inventoryReservationService);
 	}
 
 	@Test
@@ -359,6 +385,7 @@ class PaymentServiceWebhookTest {
 	private Payment payment(Order order, PaymentStatus status) {
 		Payment payment = new Payment(order, BigDecimal.TEN, status);
 		payment.setRazorpayOrderId(RAZORPAY_ORDER_ID);
+		when(orderRepository.findByIdForUpdate(order.getId())).thenReturn(Optional.of(order));
 		return payment;
 	}
 

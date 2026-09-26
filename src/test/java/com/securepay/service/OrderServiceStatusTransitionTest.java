@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -38,6 +39,7 @@ class OrderServiceStatusTransitionTest {
 	private CartItemRepository cartItemRepository;
 	private OrderRepository orderRepository;
 	private OrderItemRepository orderItemRepository;
+	private InventoryReservationService inventoryReservationService;
 	private OrderService orderService;
 
 	@BeforeEach
@@ -48,8 +50,10 @@ class OrderServiceStatusTransitionTest {
 		cartItemRepository = mock(CartItemRepository.class);
 		orderRepository = mock(OrderRepository.class);
 		orderItemRepository = mock(OrderItemRepository.class);
-		orderService = new OrderService(userRepository, productRepository, cartRepository,
-				cartItemRepository, orderRepository, orderItemRepository);
+		inventoryReservationService = mock(InventoryReservationService.class);
+		orderService = new OrderService(userRepository, cartRepository,
+				cartItemRepository, orderRepository, orderItemRepository,
+				inventoryReservationService);
 	}
 
 	@AfterEach
@@ -72,7 +76,7 @@ class OrderServiceStatusTransitionTest {
 
 		for (Transition transition : transitions) {
 			Order order = order(orderId, transition.from());
-			when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+			when(orderRepository.findByIdForUpdate(orderId)).thenReturn(Optional.of(order));
 			when(orderRepository.save(order)).thenReturn(order);
 			when(orderItemRepository.findByOrderId(orderId)).thenReturn(List.of());
 
@@ -84,6 +88,8 @@ class OrderServiceStatusTransitionTest {
 			verify(orderRepository).save(order);
 			orderId++;
 		}
+		verify(inventoryReservationService, times(3))
+				.releaseReservedInventory(org.mockito.ArgumentMatchers.any(Order.class));
 
 		verifyNoInteractions(userRepository, productRepository, cartRepository, cartItemRepository);
 	}
@@ -121,7 +127,7 @@ class OrderServiceStatusTransitionTest {
 		for (Transition transition : invalidTransitions) {
 			long currentOrderId = orderId++;
 			Order order = order(currentOrderId, transition.from());
-			when(orderRepository.findById(currentOrderId)).thenReturn(Optional.of(order));
+			when(orderRepository.findByIdForUpdate(currentOrderId)).thenReturn(Optional.of(order));
 
 			assertThrows(InvalidOrderStatusTransitionException.class,
 					() -> orderService.updateOrderStatus(currentOrderId, transition.to()));
@@ -131,13 +137,27 @@ class OrderServiceStatusTransitionTest {
 		}
 
 		verifyNoInteractions(orderItemRepository, userRepository, productRepository,
-				cartRepository, cartItemRepository);
+				cartRepository, cartItemRepository, inventoryReservationService);
+	}
+
+	@Test
+	void cancellingProcessingOrderDoesNotReleaseStockAfterFulfillmentHasStarted() {
+		Order order = order(700L, OrderStatus.PROCESSING);
+		when(orderRepository.findByIdForUpdate(700L)).thenReturn(Optional.of(order));
+		when(orderItemRepository.findByOrderId(700L)).thenReturn(List.of());
+		when(orderRepository.save(order)).thenReturn(order);
+
+		var response = orderService.updateOrderStatus(700L, OrderStatus.CANCELLED);
+
+		assertEquals(OrderStatus.CANCELLED, response.getStatus());
+		verify(inventoryReservationService, never())
+				.releaseReservedInventory(org.mockito.ArgumentMatchers.any(Order.class));
 	}
 
 	@Test
 	void nullStatusIsRejectedWithoutSaving() {
 		Order order = order(500L, OrderStatus.CREATED);
-		when(orderRepository.findById(500L)).thenReturn(Optional.of(order));
+		when(orderRepository.findByIdForUpdate(500L)).thenReturn(Optional.of(order));
 
 		assertThrows(InvalidOrderStatusTransitionException.class,
 				() -> orderService.updateOrderStatus(500L, null));
@@ -149,7 +169,7 @@ class OrderServiceStatusTransitionTest {
 
 	@Test
 	void missingOrderThrowsResourceNotFoundException() {
-		when(orderRepository.findById(999L)).thenReturn(Optional.empty());
+		when(orderRepository.findByIdForUpdate(999L)).thenReturn(Optional.empty());
 
 		ResourceNotFoundException exception = assertThrows(
 				ResourceNotFoundException.class,

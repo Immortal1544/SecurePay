@@ -91,6 +91,17 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
 	}
 
+	@ExceptionHandler(OrderConflictException.class)
+	public ResponseEntity<ErrorResponse> handleOrderConflict(OrderConflictException exception) {
+		ErrorResponse errorResponse = new ErrorResponse(
+				LocalDateTime.now(),
+				HttpStatus.CONFLICT.value(),
+				"Conflict",
+				exception.getMessage());
+
+		return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
+	}
+
 	@ExceptionHandler(ResourceAlreadyExistsException.class)
 	public ResponseEntity<ErrorResponse> handleResourceAlreadyExists(
 			ResourceAlreadyExistsException exception) {

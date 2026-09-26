@@ -60,6 +60,7 @@ class PaymentServiceRefundTest {
 	private UserRepository userRepository;
 	private OrderRepository orderRepository;
 	private PaymentRepository paymentRepository;
+	private InventoryReservationService inventoryReservationService;
 	private PaymentClient razorpayPayments;
 	private PaymentService paymentService;
 	private User admin;
@@ -69,6 +70,7 @@ class PaymentServiceRefundTest {
 		userRepository = mock(UserRepository.class);
 		orderRepository = mock(OrderRepository.class);
 		paymentRepository = mock(PaymentRepository.class);
+		inventoryReservationService = mock(InventoryReservationService.class);
 		RazorpayClient razorpayClient = mock(RazorpayClient.class);
 		razorpayPayments = mock(PaymentClient.class);
 		razorpayClient.payments = razorpayPayments;
@@ -76,6 +78,7 @@ class PaymentServiceRefundTest {
 				userRepository,
 				orderRepository,
 				paymentRepository,
+				inventoryReservationService,
 				razorpayClient,
 				"test-key-id",
 				KEY_SECRET,
@@ -122,6 +125,7 @@ class PaymentServiceRefundTest {
 		assertEquals(1000, refundRequest.getValue().getInt("amount"));
 		verify(paymentRepository).save(payment);
 		verify(orderRepository).save(order);
+		verify(inventoryReservationService).releaseReservedInventory(order);
 	}
 
 	@Test
@@ -151,6 +155,7 @@ class PaymentServiceRefundTest {
 		verifyNoInteractions(razorpayPayments);
 		verify(paymentRepository, never()).save(any(Payment.class));
 		verify(orderRepository).save(order);
+		verifyNoInteractions(inventoryReservationService);
 	}
 
 	@Test
@@ -210,6 +215,7 @@ class PaymentServiceRefundTest {
 		assertEquals(OrderStatus.PAID, order.getStatus());
 		verify(paymentRepository, never()).save(any(Payment.class));
 		verify(orderRepository, never()).save(any(Order.class));
+		verifyNoInteractions(inventoryReservationService);
 	}
 
 	@Test
@@ -225,6 +231,7 @@ class PaymentServiceRefundTest {
 		assertEquals(PaymentStatus.REFUNDED, payment.getStatus());
 		assertEquals(OrderStatus.CANCELLED, order.getStatus());
 		verify(orderRepository, never()).save(any(Order.class));
+		verifyNoInteractions(inventoryReservationService);
 	}
 
 	@Test
@@ -253,9 +260,25 @@ class PaymentServiceRefundTest {
 		verify(orderRepository, never()).save(any(Order.class));
 	}
 
+	@Test
+	void successfulRefundAfterFulfillmentStartedDoesNotReleaseInventory() throws Exception {
+		Order order = order(OrderStatus.PROCESSING);
+		Payment payment = payment(order, PaymentStatus.SUCCESS);
+		when(paymentRepository.findByOrderIdForUpdate(ORDER_ID)).thenReturn(Optional.of(payment));
+		when(razorpayPayments.refund(eq(RAZORPAY_PAYMENT_ID), any(JSONObject.class)))
+				.thenReturn(mock(Refund.class));
+
+		paymentService.refundOrderPayment(ORDER_ID);
+
+		assertEquals(PaymentStatus.REFUNDED, payment.getStatus());
+		assertEquals(OrderStatus.CANCELLED, order.getStatus());
+		verifyNoInteractions(inventoryReservationService);
+	}
+
 	private Order order(OrderStatus status) {
 		Order order = new Order(null, BigDecimal.TEN, status);
 		order.setId(ORDER_ID);
+		when(orderRepository.findByIdForUpdate(ORDER_ID)).thenReturn(Optional.of(order));
 		return order;
 	}
 
