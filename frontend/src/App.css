@@ -1047,6 +1047,24 @@ h2 {
   text-transform: uppercase;
 }
 
+.order-status-group {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.order-status-item {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.order-status-label {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .admin-count {
   background: var(--mint);
   color: var(--teal-dark);

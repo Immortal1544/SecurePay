@@ -27,6 +27,18 @@ function formatStatus(status) {
   return status ? status.replaceAll('_', ' ') : 'Unknown'
 }
 
+function formatPaymentStatus(status) {
+  const labels = {
+    CREATED: 'Created',
+    PENDING: 'Pending',
+    SUCCESS: 'Successful',
+    FAILED: 'Failed',
+    REFUNDED: 'Refunded',
+  }
+
+  return labels[status] || 'No payment recorded'
+}
+
 function formatDeliveryAddress(order) {
   const cityRegion = [order.city, order.state, order.postalCode].filter(Boolean).join(', ')
   return [order.addressLine1, order.addressLine2, cityRegion, order.country].filter(Boolean).join(', ')
@@ -74,6 +86,8 @@ function loadRazorpayScript() {
 
 function Orders() {
   const [orders, setOrders] = useState([])
+  const [paymentStatuses, setPaymentStatuses] = useState({})
+  const [paymentStatusError, setPaymentStatusError] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedOrderId, setSelectedOrderId] = useState(null)
@@ -105,15 +119,48 @@ function Orders() {
     setOrders(Array.isArray(responseData) ? responseData : [])
   }
 
+  async function loadPaymentStatuses() {
+    const token = getToken()
+
+    if (!token) {
+      throw new Error('Please log in to view payment statuses.')
+    }
+
+    const response = await fetch(PAYMENTS_URL, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error('Unable to load payment statuses.')
+    }
+
+    const responseData = await response.json()
+    const statuses = Object.fromEntries(
+      (Array.isArray(responseData) ? responseData : [])
+        .filter((payment) => payment?.orderId != null && payment?.status)
+        .map((payment) => [payment.orderId, payment.status]),
+    )
+
+    setPaymentStatuses(statuses)
+    setPaymentStatusError(false)
+  }
+
   useEffect(() => {
     async function fetchOrders() {
-      try {
-        await loadOrders()
-      } catch {
+      const [ordersResult, paymentsResult] = await Promise.allSettled([
+        loadOrders(),
+        loadPaymentStatuses(),
+      ])
+
+      if (ordersResult.status === 'rejected') {
         setError('Unable to load your orders. Please try again.')
-      } finally {
-        setIsLoading(false)
       }
+      if (paymentsResult.status === 'rejected') {
+        setPaymentStatusError(true)
+      }
+      setIsLoading(false)
     }
 
     fetchOrders()
@@ -218,8 +265,18 @@ function Orders() {
       } catch {
         setPaymentError('Payment succeeded, but the order list could not be refreshed.')
       }
+      try {
+        await loadPaymentStatuses()
+      } catch {
+        setPaymentStatusError(true)
+      }
     } catch {
       setPaymentError('Payment could not be completed. Please try again.')
+      try {
+        await loadPaymentStatuses()
+      } catch {
+        setPaymentStatusError(true)
+      }
     } finally {
       setProcessingPaymentOrderId(null)
     }
@@ -284,6 +341,7 @@ function Orders() {
             const isSelected = selectedOrderId === order.orderId
             const displayedOrder = isSelected && orderDetails ? orderDetails : order
             const canPay = order.status === 'CREATED' || order.status === 'PAYMENT_PENDING'
+            const paymentStatus = paymentStatuses[order.orderId]
 
             return (
               <article className="order-card" key={order.orderId}>
@@ -292,7 +350,18 @@ function Orders() {
                     <p className="product-detail-label">Order ID</p>
                     <h2>#{order.orderId}</h2>
                   </div>
-                  <span className="order-status">{formatStatus(displayedOrder.status)}</span>
+                  <div className="order-status-group">
+                    <div className="order-status-item">
+                      <span className="order-status-label">Order status</span>
+                      <span className="order-status">{formatStatus(displayedOrder.status)}</span>
+                    </div>
+                    <div className="order-status-item">
+                      <span className="order-status-label">Payment status</span>
+                      <span className="order-status">
+                        {paymentStatusError ? 'Unavailable' : formatPaymentStatus(paymentStatus)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="order-meta">
